@@ -23,6 +23,10 @@
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/quotaops.h>
+
+#include <linux/dax.h> /*BHK*/
+#include <linux/pfn_t.h>/*BHK*/
+
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
 #include <linux/fscrypt_supp.h>
 #else
@@ -93,6 +97,7 @@ extern char *fault_name[FAULT_MAX];
 #define F2FS_MOUNT_GRPQUOTA		0x00100000
 #define F2FS_MOUNT_PRJQUOTA		0x00200000
 #define F2FS_MOUNT_QUOTA		0x00400000
+#define F2FS_MOUNT_DAX			0x00800000
 
 #define clear_opt(sbi, option)	((sbi)->mount_opt.opt &= ~F2FS_MOUNT_##option)
 #define set_opt(sbi, option)	((sbi)->mount_opt.opt |= F2FS_MOUNT_##option)
@@ -1138,6 +1143,13 @@ struct f2fs_sb_info {
 	char *s_qf_names[MAXQUOTAS];
 	int s_jquota_fmt;			/* Format of quota to use */
 #endif
+
+	/* BHK */
+	struct dax_device *s_dax_dev;
+	void *virt_addr;
+	char pmem_dev[DISK_NAME_LEN];
+	unsigned long pmem_size;
+	phys_addr_t phys_addr;
 };
 
 #ifdef CONFIG_F2FS_FAULT_INJECTION

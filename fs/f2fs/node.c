@@ -23,6 +23,9 @@
 #include "trace.h"
 #include <trace/events/f2fs.h>
 
+#include <linux/dax.h>
+#include <asm/cacheflush.h>
+
 #define on_build_free_nids(nmi) mutex_is_locked(&(nm_i)->build_lock)
 
 static struct kmem_cache *nat_entry_slab;
@@ -339,6 +342,14 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 		set_nat_flag(e, IS_CHECKPOINTED, false);
 	__set_nat_cache_dirty(nm_i, e);
 
+	void *mem = kmap_atomic(get_current_nat_page(sbi, nat_get_nid(e)));
+	memcpy_flushcache(sbi->virt_addr, mem, PAGE_SIZE);
+	kunmap_atomic(mem);
+//
+//	sbi->s_dax_dev->ops->rw_page(
+//	
+//	write_pmem(sbi->virt_addr, get_current_nat_page(sbi, nat_get_nid(e)), 0, PAGE_SIZE); 
+//
 	/* update fsync_mark if its inode nat entry is still alive */
 	if (ni->nid != ni->ino)
 		e = __lookup_nat_cache(nm_i, ni->ino);
@@ -1508,7 +1519,7 @@ continue_unlock:
 			ret = __write_node_page(page, atomic &&
 						page == last_page,
 						&submitted, wbc, true,
-						FS_NODE_IO);
+						FS_NODE_IO); //here, assign node block addres
 			if (ret) {
 				unlock_page(page);
 				f2fs_put_page(last_page, 0);
