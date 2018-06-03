@@ -300,7 +300,7 @@ go_write:
 
 	if (cp_reason) {
 		/* all the dirty node pages should be flushed for POR */
-		ret = f2fs_sync_fs(inode->i_sb, 1);
+		ret = f2fs_sync_fs(inode->i_sb, 1); //write_check_point
 
 		/*
 		 * We've secured consistency through sync_fs. Following pino

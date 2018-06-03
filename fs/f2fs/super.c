@@ -33,6 +33,8 @@
 #include "gc.h"
 #include "trace.h"
 
+#include <linux/dax.h> /*BHK*/
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/f2fs.h>
 
@@ -145,6 +147,7 @@ enum {
 	Opt_compress_algorithm,
 	Opt_compress_log_size,
 	Opt_compress_extension,
+	Opt_pmem, /* BHK */
 	Opt_err,
 };
 
@@ -210,6 +213,7 @@ static match_table_t f2fs_tokens = {
 	{Opt_compress_algorithm, "compress_algorithm=%s"},
 	{Opt_compress_log_size, "compress_log_size=%u"},
 	{Opt_compress_extension, "compress_extension=%s"},
+	{Opt_pmem, "pmem=%s"}, /* BHK */
 	{Opt_err, NULL},
 };
 
@@ -878,6 +882,15 @@ static int parse_options(struct super_block *sb, char *options)
 			strcpy(ext[ext_cnt], name);
 			F2FS_OPTION(sbi).compress_ext_cnt++;
 			kfree(name);
+		/* BHK */
+		case Opt_pmem:
+			name=match_strdup(&args[0]);
+			if(strlen(name)!=0){
+				f2fs_msg(sb, KERN_INFO, "|pmem = %s|%d", name, strlen(name));
+				strcpy(sbi->pmem_dev, name);
+				f2fs_msg(sb, KERN_INFO, "|copied  = %s|%d", sbi->pmem_dev, strlen(sbi->pmem_dev));
+				set_opt(sbi, DAX);
+			}
 			break;
 		default:
 			f2fs_err(sbi, "Unrecognized mount option \"%s\" or missing value",
@@ -3278,6 +3291,44 @@ static int f2fs_setup_casefold(struct f2fs_sb_info *sbi)
 #endif
 	return 0;
 }
+/* BHK */
+static int f2fs_get_nvmm_info(struct f2fs_sb_info *sbi){
+	void *virt_addr = NULL;
+	struct dax_device *dax_dev;
+	struct block_device *bdev;
+	pfn_t __pfn_t;
+	long size;
+	struct super_block sb;
+	int ret;
+
+//	dax_dev=fs_dax_get_by_host(sbi->pmem_dev);
+	bdev = blkdev_get_by_path(sbi->pmem_dev, sbi->sb->s_mode, sbi->sb->s_type);
+	if(!bdev)
+		f2fs_msg(sbi->sb, KERN_ERR, "Couldn't get blkdev by path");
+	dax_dev=fs_dax_get_by_bdev(bdev);
+	f2fs_msg(sbi->sb, KERN_INFO, "sbi->pmem_dev : %s", sbi->pmem_dev);
+	if(!dax_dev){
+		f2fs_msg(sbi->sb, KERN_ERR, "Couldn't retrieve DAX device");
+		return -EINVAL;
+	}
+	sbi->s_dax_dev=dax_dev;
+	size = dax_direct_access(sbi->s_dax_dev, 0, LONG_MAX/PAGE_SIZE, &virt_addr, &__pfn_t)*PAGE_SIZE;
+	if(size <= 0){
+		f2fs_msg(sbi->sb, KERN_ERR, "direct_access failed");
+		return -EINVAL;
+	}
+	sbi->virt_addr=virt_addr;
+	if(!sbi->virt_addr){
+		f2fs_msg(sbi->sb, KERN_ERR, "ioremap of the f2fs image failed(1)");
+		return -EINVAL;
+	}
+	
+	sbi->phys_addr = pfn_t_to_pfn(__pfn_t) << PAGE_SHIFT;
+	sbi->pmem_size = size;
+
+	return 0;
+}
+
 
 static void f2fs_tuning_parameters(struct f2fs_sb_info *sbi)
 {
@@ -3304,6 +3355,9 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 	int recovery, i, valid_super_block;
 	struct curseg_info *seg_i;
 	int retry_cnt = 1;
+
+	/* BHK */
+	int retval=-EINVAL;
 
 try_onemore:
 	err = -EINVAL;
@@ -3346,6 +3400,7 @@ try_onemore:
 		sbi->s_chksum_seed = f2fs_chksum(sbi, ~0, raw_super->uuid,
 						sizeof(raw_super->uuid));
 
+
 	/*
 	 * The BLKZONED feature indicates that the drive was formatted with
 	 * zone alignment optimization. This is optional for host-aware
@@ -3369,6 +3424,13 @@ try_onemore:
 	err = parse_options(sb, options);
 	if (err)
 		goto free_options;
+
+	/* BHK */
+	retval=f2fs_get_nvmm_info(sbi);
+	if(retval){
+		f2fs_msg(sb, KERN_ERR, "get nvmm info failed");
+//		goto free_options;
+	}
 
 	sbi->max_file_blocks = max_file_blocks();
 	sb->s_maxbytes = sbi->max_file_blocks <<
