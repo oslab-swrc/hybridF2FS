@@ -25,6 +25,8 @@
 #include <linux/part_stat.h>
 #include <linux/dax.h> /*BHK*/
 #include <linux/pfn_t.h>/*BHK*/
+#include <linux/rbtree.h>/*BHK*/
+
 #include <crypto/hash.h>
 
 #include <linux/fscrypt.h>
@@ -100,7 +102,7 @@ extern const char *f2fs_fault_name[FAULT_MAX];
 #define F2FS_MOUNT_RESERVE_ROOT		0x01000000
 #define F2FS_MOUNT_DISABLE_CHECKPOINT	0x02000000
 #define F2FS_MOUNT_NORECOVERY		0x04000000
-#define F2FS_MOUNT_DAX			0x08000000
+#define F2FS_MOUNT_PMEM			0x08000000
 
 #define F2FS_OPTION(sbi)	((sbi)->mount_opt)
 #define clear_opt(sbi, option)	(F2FS_OPTION(sbi).opt &= ~F2FS_MOUNT_##option)
@@ -1543,7 +1545,7 @@ struct workqueue_struct *post_read_wq;	/* post read workqueue */
 	char pmem_dev[DISK_NAME_LEN];
 	unsigned long pmem_size;
 	phys_addr_t phys_addr;
-
+	struct free_list *free_list;
 };
 
 struct f2fs_private_dio {

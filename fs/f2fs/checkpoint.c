@@ -1600,11 +1600,13 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	ckpt->checkpoint_ver = cpu_to_le64(++ckpt_ver);
 
 	/* write cached NAT/SIT entries to NAT/SIT area */
-	err = f2fs_flush_nat_entries(sbi, cpc);
+	/*
+    err = f2fs_flush_nat_entries(sbi, cpc);
 	if (err)
 		goto stop;
 
 	f2fs_flush_sit_entries(sbi, cpc);
+    */
 
 	err = do_checkpoint(sbi, cpc);
 	if (err)
