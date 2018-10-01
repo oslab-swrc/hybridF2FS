@@ -33,6 +33,7 @@
 #include "xattr.h"
 #include "gc.h"
 #include "trace.h"
+#include "balloc.h"
 
 #include <linux/dax.h> /*BHK*/
 
@@ -40,6 +41,7 @@
 #include <trace/events/f2fs.h>
 
 static struct kmem_cache *f2fs_inode_cachep;
+static struct kmem_cache *f2fs_rangenode_cachep;
 
 #ifdef CONFIG_F2FS_FAULT_INJECTION
 
@@ -596,8 +598,8 @@ static int parse_options(struct super_block *sb, char *options)
 			if(strlen(name)!=0){
 				f2fs_msg(sb, KERN_INFO, "|pmem = %s|%d", name, strlen(name));
 				strcpy(sbi->pmem_dev, name);
-				f2fs_msg(sb, KERN_INFO, "|copied  = %s|%d", sbi->pmem_dev, strlen(sbi->pmem_dev));
-				set_opt(sbi, DAX);
+//				f2fs_msg(sb, KERN_INFO, "|copied  = %s|%d", sbi->pmem_dev, strlen(sbi->pmem_dev));
+				set_opt(sbi, PMEM);
 			}
 			break;
 		default:
@@ -842,6 +844,12 @@ static void f2fs_put_super(struct super_block *sb)
 	iput(sbi->node_inode);
 	iput(sbi->meta_inode);
 
+	/* free for node logging bhk */
+	if(sbi->virt_addr){
+		f2fs_delete_free_lists(sb);
+		sbi->virt_addr = NULL;
+	}
+
 	/* destroy f2fs internal modules */
 	destroy_node_manager(sbi);
 	destroy_segment_manager(sbi);
@@ -865,6 +873,17 @@ static void f2fs_put_super(struct super_block *sb)
 	for (i = 0; i < NR_PAGE_TYPE; i++)
 		kfree(sbi->write_io[i]);
 	kfree(sbi);
+}
+
+extern struct nova_range_node *f2fs_alloc_range_node(struct super_block *sb){
+	struct nova_range_node *p;
+
+	p=(struct nova_range_node *)kmem_cache_zalloc(f2fs_rangenode_cachep, GFP_NOFS);
+	return p;
+}
+
+extern void f2fs_free_range_node(struct nova_range_node *node){
+	kmem_cache_free(f2fs_rangenode_cachep, node);
 }
 
 int f2fs_sync_fs(struct super_block *sb, int sync)
@@ -2270,6 +2289,7 @@ static int f2fs_get_nvmm_info(struct f2fs_sb_info *sbi){
 		return -EINVAL;
 	}
 	sbi->virt_addr=virt_addr;
+	f2fs_msg(sbi->sb, KERN_INFO, "virt_addr = %p", virt_addr);
 	if(!sbi->virt_addr){
 		f2fs_msg(sbi->sb, KERN_ERR, "ioremap of the f2fs image failed(1)");
 		return -EINVAL;
@@ -2364,10 +2384,16 @@ try_onemore:
 		goto free_options;
 
 	/* BHK */
-	retval=f2fs_get_nvmm_info(sbi);
-	if(retval){
-		f2fs_msg(sb, KERN_ERR, "get nvmm info failed");
+	if( test_opt(sbi, PMEM) ){
+		retval=f2fs_get_nvmm_info(sbi);
+		if(retval){
+			f2fs_msg(sb, KERN_ERR, "get nvmm info failed");
 //		goto free_options;
+		}
+		if(f2fs_alloc_block_free_lists(sb)){
+			retval = -ENOMEM;
+			f2fs_msg(sb, KERN_ERR, "Failed to allocate block free lists");
+		}
 	}
 
 	sbi->max_file_blocks = max_file_blocks();
@@ -2497,6 +2523,12 @@ try_onemore:
 			"Failed to initialize F2FS node manager");
 		goto free_nm;
 	}
+
+	/** BHK **/
+	if( test_opt(sbi, PMEM) ){
+		f2fs_init_blockmap(sb, 0);
+	}
+	/** BHK **/
 
 	/* For write statistics */
 	if (sb->s_bdev->bd_part)
@@ -2712,6 +2744,22 @@ static int __init init_inodecache(void)
 	return 0;
 }
 
+/* bhk */
+static int __init init_rangenode_cache(void){
+	f2fs_rangenode_cachep = kmem_cache_create("f2fs_rangenode_cache",
+					sizeof(struct nova_range_node),
+					0, (SLAB_RECLAIM_ACCOUNT |
+					SLAB_MEM_SPREAD), NULL);
+	if (f2fs_rangenode_cachep == NULL)
+		return -ENOMEM;
+	return 0;
+}
+static void destroy_rangenode_cache(void){
+	rcu_barrier();
+	kmem_cache_destroy(f2fs_rangenode_cachep);
+}
+/******/
+
 static void destroy_inodecache(void)
 {
 	/*
@@ -2731,6 +2779,12 @@ static int __init init_f2fs_fs(void)
 	err = init_inodecache();
 	if (err)
 		goto fail;
+	/*BHK*/
+	err = init_rangenode_cache();
+	if (err)
+		goto fail;
+	/*****/
+
 	err = create_node_manager_caches();
 	if (err)
 		goto free_inodecache;
@@ -2787,6 +2841,9 @@ static void __exit exit_f2fs_fs(void)
 	destroy_checkpoint_caches();
 	destroy_segment_manager_caches();
 	destroy_node_manager_caches();
+	/*bhk*/
+	destroy_rangenode_cache();
+	/*****/
 	destroy_inodecache();
 	f2fs_destroy_trace_ios();
 }

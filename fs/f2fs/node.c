@@ -23,6 +23,8 @@
 #include "trace.h"
 #include <trace/events/f2fs.h>
 
+#include "balloc.h"
+
 #include <linux/dax.h>
 #include <asm/cacheflush.h>
 
@@ -294,6 +296,26 @@ static void cache_nat_entry(struct f2fs_sb_info *sbi, nid_t nid,
 	}
 }
 
+static void pmem_write_nat_f2fs(struct f2fs_sb_info *sbi, struct nat_entry *e){
+	struct f2fs_nm_info *nm_i = NM_I(sbi);
+	nid_t nid = e->ni.nid;
+	pgoff_t blockoff = NAT_BLOCK_OFFSET(nid);
+	pgoff_t index = current_nat_addr(sbi, nid);
+	int ret;
+	block_t nat_blkaddr = nm_i->nat_blkaddr;
+
+	void *vaddr = sbi->virt_addr + nid * sizeof(struct nat_entry) + nat_blkaddr;// 1segment for CP
+	// + sbi->cur_cp_pack == 1?2?
+
+//	f2fs_msg(sbi->sb, KERN_INFO, "sbi->cur_cp_pack = %d", sbi->cur_cp_pack);
+	f2fs_msg(sbi->sb, KERN_INFO, "pmem_write_nat_f2fs: vaddr = %p e->ni.nid = %d", vaddr, nid);
+
+	ret=__copy_from_user_inatomic(vaddr, e, sizeof(struct nat_entry));
+
+	f2fs_msg(sbi->sb, KERN_INFO, "pmem_write_nat_f2fs: __copy_from_user_inatomic = %d", ret);
+
+}
+
 static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 			block_t new_blkaddr, bool fsync_done)
 {
@@ -303,6 +325,7 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 	down_write(&nm_i->nat_tree_lock);
 	e = __lookup_nat_cache(nm_i, ni->nid);
 	if (!e) {
+		f2fs_msg(sbi->sb, KERN_INFO, "set_node_addr: __lookup_nat_cache failed");
 		e = grab_nat_entry(nm_i, ni->nid, true);
 		copy_node_info(&e->ni, ni);
 		f2fs_bug_on(sbi, ni->blk_addr == NEW_ADDR);
@@ -317,6 +340,8 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 	}
 
 	/* sanity check */
+	f2fs_msg(sbi->sb, KERN_INFO, "nid = %d, nat_get_blkaddr(e) = %u, ni->blk_addr = %u", ni->nid,nat_get_blkaddr(e), ni->blk_addr);
+
 	f2fs_bug_on(sbi, nat_get_blkaddr(e) != ni->blk_addr);
 	f2fs_bug_on(sbi, nat_get_blkaddr(e) == NULL_ADDR &&
 			new_blkaddr == NULL_ADDR);
@@ -342,14 +367,9 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 		set_nat_flag(e, IS_CHECKPOINTED, false);
 	__set_nat_cache_dirty(nm_i, e);
 
-	void *mem = kmap_atomic(get_current_nat_page(sbi, nat_get_nid(e)));
-	memcpy_flushcache(sbi->virt_addr, mem, PAGE_SIZE);
-	kunmap_atomic(mem);
-//
-//	sbi->s_dax_dev->ops->rw_page(
-//	
-//	write_pmem(sbi->virt_addr, get_current_nat_page(sbi, nat_get_nid(e)), 0, PAGE_SIZE); 
-//
+	if( test_opt(sbi, PMEM) && new_blkaddr != NEW_ADDR )	// BHK
+		pmem_write_nat_f2fs(sbi, e);			// BHK
+	
 	/* update fsync_mark if its inode nat entry is still alive */
 	if (ni->nid != ni->ino)
 		e = __lookup_nat_cache(nm_i, ni->ino);
@@ -380,6 +400,28 @@ int try_to_free_nats(struct f2fs_sb_info *sbi, int nr_shrink)
 	return nr - nr_shrink;
 }
 
+static int pmem_read_nat_f2fs(struct f2fs_sb_info *sbi, struct node_info *ni, nid_t nid){
+//	nid_t nid = e->ni.nid;
+	void *vaddr = sbi->virt_addr + nid * sizeof(struct nat_entry) + sbi->blocks_per_seg;
+		// + sbi->cur_cp_packs = 1? 2?
+	struct nat_entry e;
+	int ret;
+
+	f2fs_msg(sbi->sb, KERN_INFO, "pmem_read_nat_f2fs nid = %d", nid);
+
+	ret = __copy_to_user(&e, vaddr, sizeof(struct nat_entry));
+
+	f2fs_msg(sbi->sb, KERN_ERR, "copy to user read = %d", ret);
+	f2fs_msg(sbi->sb, KERN_INFO, "e->ni.nid = %d, e->ni.ino = %d, e->ni.blk_addr = %p", e.ni.nid, e.ni.ino, e.ni.blk_addr);
+
+	if( ret != 0 )
+		return ret;
+
+	ni->ino = e.ni.ino;
+	ni->blk_addr = e.ni.blk_addr;
+	ni->version = e.ni.version;
+}
+
 /*
  * This function always returns success
  */
@@ -396,19 +438,25 @@ void get_node_info(struct f2fs_sb_info *sbi, nid_t nid, struct node_info *ni)
 	pgoff_t index;
 	int i;
 
+	f2fs_msg(sbi->sb, KERN_INFO, "get_node_info for nid = %d", nid);
+
+	//bhk
+//	void *pmem_addr=sbi->virt_addr + nid * sizeof(struct nat_entry) + sbi->blocks_per_seg;
+//	unsigned long left;
+
 	ni->nid = nid;
 
 	/* Check nat cache */
 	down_read(&nm_i->nat_tree_lock);
 	e = __lookup_nat_cache(nm_i, nid);
 	if (e) {
+		f2fs_msg(sbi->sb, KERN_INFO, "get_node_info: __lookup_nat_cache success");
 		ni->ino = nat_get_ino(e);
 		ni->blk_addr = nat_get_blkaddr(e);
 		ni->version = nat_get_version(e);
 		up_read(&nm_i->nat_tree_lock);
 		return;
 	}
-
 	memset(&ne, 0, sizeof(struct f2fs_nat_entry));
 
 	/* Check current segment summary */
@@ -420,9 +468,18 @@ void get_node_info(struct f2fs_sb_info *sbi, nid_t nid, struct node_info *ni)
 	}
 	up_read(&curseg->journal_rwsem);
 	if (i >= 0) {
+		f2fs_msg(sbi->sb, KERN_INFO, "goto cache");
 		up_read(&nm_i->nat_tree_lock);
 		goto cache;
 	}
+
+/////////////////////////////////////
+	if( test_opt(sbi, PMEM) && nid != 3 ){
+		f2fs_msg(sbi->sb, KERN_INFO, "read nat test");
+		if( pmem_read_nat_f2fs(sbi, ni, nid) == 0 )
+			return;
+	}
+////////////////////////////////////
 
 	/* Fill node_info from nat page */
 	index = current_nat_addr(sbi, nid);
@@ -433,6 +490,13 @@ void get_node_info(struct f2fs_sb_info *sbi, nid_t nid, struct node_info *ni)
 	ne = nat_blk->entries[nid - start_nid];
 	node_info_from_raw_nat(ni, &ne);
 	f2fs_put_page(page, 1);
+
+	// read nat entry from pmem
+//	if( test_opt(sbi, PMEM) )
+//		pmem_read_nat_f2fs(sbi, ni, nid);
+//		left = __copy_to_user(&ne, pmem_addr, sizeof(struct nat_entry));
+	//
+	
 cache:
 	/* cache nat entry */
 	down_write(&nm_i->nat_tree_lock);
@@ -1353,6 +1417,11 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	struct f2fs_sb_info *sbi = F2FS_P_SB(page);
 	nid_t nid;
 	struct node_info ni;
+
+	unsigned long blocknr=0;
+	int allocated = 0, ret;
+	void *vaddr=sbi->virt_addr;
+
 	struct f2fs_io_info fio = {
 		.sbi = sbi,
 		.type = NODE,
@@ -1386,6 +1455,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 
 	/* This page is already truncated */
 	if (unlikely(ni.blk_addr == NULL_ADDR)) {
+		f2fs_msg(sbi->sb, KERN_INFO, "This node page is already truncated");
 		ClearPageUptodate(page);
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
 		up_read(&sbi->node_write);
@@ -1396,6 +1466,27 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	if (atomic && !test_opt(sbi, NOBARRIER))
 		fio.op_flags |= REQ_PREFLUSH | REQ_FUA;
 
+	//here to write node log to nvm
+	//f2fs_new_blocks()
+	if( test_opt(sbi, PMEM) ){
+		allocated = f2fs_new_blocks(sbi->sb, &blocknr, 1, 0, 0, DATA_NOVA, ALLOC_FROM_HEAD); // btype is blktype for superpage?
+		//f2fs_new_blocks allocates a block and returen the address blocknr
+	
+		f2fs_msg(sbi->sb, KERN_INFO, "f2fs_new_blocks = %d, blocknr = %x", allocated, blocknr);
+
+		if(allocated == 0)
+			return -ENOSPC;
+		vaddr += blocknr;	
+		//memcpy page to blocknr
+		ret = __copy_from_user_inatomic_nocache((void*)vaddr, page, PAGE_SIZE);
+		set_node_addr(sbi, &ni, (unsigned int)blocknr, is_fsync_dnode(page));
+
+		dec_page_count(sbi, F2FS_DIRTY_NODES);
+		up_read(&sbi->node_write);
+		unlock_page(page);
+		return 0;
+	//write()
+	}
 	set_page_writeback(page);
 	fio.old_blkaddr = ni.blk_addr;
 	write_node_page(nid, &fio);
