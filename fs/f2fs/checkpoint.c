@@ -1334,6 +1334,25 @@ int write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		goto out;
 	}
 
+
+	/***********************/
+
+	trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "start block_ops");
+
+	flush_nat_entries(sbi, cpc);
+	flush_sit_entries(sbi, cpc);
+
+	clear_prefree_segments(sbi, cpc);
+
+	clear_sbi_flag(sbi, SBI_IS_DIRTY);
+	clear_sbi_flag(sbi, SBI_NEED_CP);
+	
+	trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "finish checkpoint");
+
+	goto out;
+
+	/***********************/
+
 	trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "start block_ops");
 
 	err = block_operations(sbi);
@@ -1370,8 +1389,8 @@ int write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	ckpt->checkpoint_ver = cpu_to_le64(++ckpt_ver);
 
 	/* write cached NAT/SIT entries to NAT/SIT area */
-//	flush_nat_entries(sbi, cpc);
-//	flush_sit_entries(sbi, cpc);
+	flush_nat_entries(sbi, cpc);
+	flush_sit_entries(sbi, cpc);
 
 	/* unlock all the fs_lock[] in do_checkpoint() */
 	err = do_checkpoint(sbi, cpc);

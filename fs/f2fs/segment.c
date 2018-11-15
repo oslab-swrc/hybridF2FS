@@ -2984,6 +2984,8 @@ void flush_sit_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 
 	mutex_lock(&sit_i->sentry_lock);
 
+	goto out;
+
 	if (!sit_i->dirty_sentries)
 		goto out;
 
