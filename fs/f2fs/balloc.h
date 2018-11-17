@@ -4,7 +4,7 @@
 //#include "inode.h"
 
 /* adding for data structure in nova.h */
-struct nova_range_node {
+struct f2fs_range_node {
 	struct rb_node node;
 	struct vm_area_struct *vma;
 	unsigned long mmap_entry;
@@ -27,8 +27,8 @@ struct nova_range_node {
 struct free_list {
 	spinlock_t s_lock;
 	struct rb_root	block_free_tree;
-	struct nova_range_node *first_node; // lowest address free range
-	struct nova_range_node *last_node; // highest address free range
+	struct f2fs_range_node *first_node; // lowest address free range
+	struct f2fs_range_node *last_node; // highest address free range
 
 	int		index; // Which CPU do I belong to?
 
@@ -100,7 +100,7 @@ enum node_type {
 int f2fs_alloc_block_free_lists(struct super_block *sb);
 void f2fs_delete_free_lists(struct super_block *sb);
 
-struct nova_range_node *f2fs_alloc_blocknode(struct super_block *sb);
+struct f2fs_range_node *f2fs_alloc_blocknode(struct super_block *sb);
 /*
 struct nova_range_node *nova_alloc_inode_node(struct super_block *sb);
 struct nova_range_node *nova_alloc_dir_node(struct super_block *sb);
@@ -108,7 +108,7 @@ struct vma_item *nova_alloc_vma_item(struct super_block *sb);
 void nova_free_range_node(struct nova_range_node *node);
 void nova_free_snapshot_info(struct snapshot_info *info);
 */
-void f2fs_free_blocknode(struct nova_range_node *bnode);
+void f2fs_free_blocknode(struct f2fs_range_node *bnode);
 /*
 void nova_free_inode_node(struct nova_range_node *bnode);
 void nova_free_dir_node(struct nova_range_node *bnode);
@@ -139,7 +139,7 @@ int nova_search_inodetree(struct nova_sb_info *sbi,
 	unsigned long ino, struct nova_range_node **ret_node);
 */
 int f2fs_insert_blocktree(struct rb_root *tree,
-	struct nova_range_node *new_node);
+	struct f2fs_range_node *new_node);
 /*
 int nova_insert_inodetree(struct nova_sb_info *sbi,
 	struct nova_range_node *new_node, int cpu);
@@ -148,7 +148,7 @@ int nova_find_free_slot(struct rb_root *tree, unsigned long range_low,
 	struct nova_range_node **next);
 */
 extern int f2fs_insert_range_node(struct rb_root *tree,
-	struct nova_range_node *new_node, enum node_type type);
+	struct f2fs_range_node *new_node, enum node_type type);
 /*
 extern int nova_find_range_node(struct rb_root *tree,
 	unsigned long key, enum node_type type,
@@ -157,7 +157,7 @@ extern void nova_destroy_range_node_tree(struct super_block *sb,
 	struct rb_root *tree);
 */
 
-extern struct nova_range_node *f2fs_alloc_range_node(struct super_block *sb);
-extern void f2fs_free_range_node(struct nova_range_node *node);
+extern struct f2fs_range_node *f2fs_alloc_range_node(struct super_block *sb);
+extern void f2fs_free_range_node(struct f2fs_range_node *node);
 
 #endif

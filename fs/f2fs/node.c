@@ -542,8 +542,11 @@ int f2fs_try_to_free_nats(struct f2fs_sb_info *sbi, int nr_shrink)
 }
 
 static int pmem_read_nat_f2fs(struct f2fs_sb_info *sbi, struct node_info *ni, nid_t nid){
-//	nid_t nid = e->ni.nid;
-	void *vaddr = sbi->virt_addr + nid * sizeof(struct nat_entry) + sbi->blocks_per_seg;
+//	nid_t nid = e->ni.nido;
+	struct f2fs_nm_info *nm_i = NM_I(sbi);
+	block_t nat_blkaddr = nm_i->nat_blkaddr;
+
+	void *vaddr = sbi->virt_addr + nid * sizeof(struct nat_entry) + nat_blkaddr;//
 		// + sbi->cur_cp_packs = 1? 2?
 	struct nat_entry e;
 	int ret;
