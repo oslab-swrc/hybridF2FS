@@ -875,14 +875,14 @@ static void f2fs_put_super(struct super_block *sb)
 	kfree(sbi);
 }
 
-extern struct nova_range_node *f2fs_alloc_range_node(struct super_block *sb){
-	struct nova_range_node *p;
+extern struct f2fs_range_node *f2fs_alloc_range_node(struct super_block *sb){
+	struct f2fs_range_node *p;
 
-	p=(struct nova_range_node *)kmem_cache_zalloc(f2fs_rangenode_cachep, GFP_NOFS);
+	p=(struct f2fs_range_node *)kmem_cache_zalloc(f2fs_rangenode_cachep, GFP_NOFS);
 	return p;
 }
 
-extern void f2fs_free_range_node(struct nova_range_node *node){
+extern void f2fs_free_range_node(struct f2fs_range_node *node){
 	kmem_cache_free(f2fs_rangenode_cachep, node);
 }
 
@@ -2276,12 +2276,14 @@ static int f2fs_get_nvmm_info(struct f2fs_sb_info *sbi){
 	bdev = blkdev_get_by_path(sbi->pmem_dev, sbi->sb->s_mode, sbi->sb->s_type);
 	if(!bdev)
 		f2fs_msg(sbi->sb, KERN_ERR, "Couldn't get blkdev by path");
+
 	dax_dev=fs_dax_get_by_bdev(bdev);
 	f2fs_msg(sbi->sb, KERN_INFO, "sbi->pmem_dev : %s", sbi->pmem_dev);
 	if(!dax_dev){
 		f2fs_msg(sbi->sb, KERN_ERR, "Couldn't retrieve DAX device");
 		return -EINVAL;
 	}
+
 	sbi->s_dax_dev=dax_dev;
 	size = dax_direct_access(sbi->s_dax_dev, 0, LONG_MAX/PAGE_SIZE, &virt_addr, &__pfn_t)*PAGE_SIZE;
 	if(size <= 0){
@@ -2747,7 +2749,7 @@ static int __init init_inodecache(void)
 /* bhk */
 static int __init init_rangenode_cache(void){
 	f2fs_rangenode_cachep = kmem_cache_create("f2fs_rangenode_cache",
-					sizeof(struct nova_range_node),
+					sizeof(struct f2fs_range_node),
 					0, (SLAB_RECLAIM_ACCOUNT |
 					SLAB_MEM_SPREAD), NULL);
 	if (f2fs_rangenode_cachep == NULL)

@@ -51,18 +51,18 @@ static void f2fs_init_free_list(struct super_block *sb, struct free_list *free_l
 	f2fs_msg(sb, KERN_INFO, "f2fs_init_free_list: main_blkaddr = %u", main_blkaddr);
 }
 
-struct nova_range_node *f2fs_alloc_blocknode(struct super_block *sb){
+struct f2fs_range_node *f2fs_alloc_blocknode(struct super_block *sb){
 	return f2fs_alloc_range_node(sb);
 }
 
-void f2fs_free_blocknode(struct nova_range_node *node){
+void f2fs_free_blocknode(struct f2fs_range_node *node){
 	f2fs_free_range_node(node);
 }
 
 void f2fs_init_blockmap(struct super_block *sb, int recovery){
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
 	struct rb_root *tree;
-	struct nova_range_node *blknode;
+	struct f2fs_range_node *blknode;
 	struct free_list *free_list;
 	int ret;
 
@@ -94,7 +94,7 @@ void f2fs_init_blockmap(struct super_block *sb, int recovery){
 
 }
 
-static inline int nova_rbtree_compare_rangenode(struct nova_range_node *curr,
+static inline int nova_rbtree_compare_rangenode(struct f2fs_range_node *curr,
 		        unsigned long key, enum node_type type)
 {
 	if (type == NODE_DIR) {
@@ -114,8 +114,8 @@ static inline int nova_rbtree_compare_rangenode(struct nova_range_node *curr,
 	return 0;
 }
 
-int f2fs_insert_range_node(struct rb_root *tree, struct nova_range_node *new_node, enum node_type type){
-	struct nova_range_node *curr;
+int f2fs_insert_range_node(struct rb_root *tree, struct f2fs_range_node *new_node, enum node_type type){
+	struct f2fs_range_node *curr;
 	struct rb_node **temp, *parent;
 	int compVal;
 
@@ -123,7 +123,7 @@ int f2fs_insert_range_node(struct rb_root *tree, struct nova_range_node *new_nod
 	parent = NULL;
 
 	while(*temp){
-		curr = container_of(*temp, struct nova_range_node, node);
+		curr = container_of(*temp, struct f2fs_range_node, node);
 		compVal = nova_rbtree_compare_rangenode(curr, new_node->range_low, type);
 
 		parent = *temp;
@@ -143,7 +143,7 @@ int f2fs_insert_range_node(struct rb_root *tree, struct nova_range_node *new_nod
 	return 0;
 }
 
-int f2fs_insert_blocktree(struct rb_root *tree, struct nova_range_node *new_node){
+int f2fs_insert_blocktree(struct rb_root *tree, struct f2fs_range_node *new_node){
 	int ret;
 
 	ret = f2fs_insert_range_node(tree, new_node, NODE_BLOCK);
@@ -157,7 +157,7 @@ int f2fs_insert_blocktree(struct rb_root *tree, struct nova_range_node *new_node
 static long f2fs_alloc_blocks_in_free_list(struct super_block *sb, struct free_list *free_list, unsigned short btype, enum alloc_type atype, unsigned long num_blocks, unsigned long *new_blocknr, enum nova_alloc_direction from_tail){
 
 	struct rb_root *tree;
-	struct nova_range_node *curr, *next=NULL, *prev=NULL;
+	struct f2fs_range_node *curr, *next=NULL, *prev=NULL;
 	struct rb_node *temp, *next_node, *prev_node;
 	unsigned long curr_blocks;
 	bool found = 0;
@@ -180,7 +180,7 @@ static long f2fs_alloc_blocks_in_free_list(struct super_block *sb, struct free_l
 
 	while(temp){
 		step++;
-		curr = container_of(temp, struct nova_range_node, node);
+		curr = container_of(temp, struct f2fs_range_node, node);
 
 		curr_blocks = curr->range_high - curr->range_low + 1;
 
@@ -193,14 +193,14 @@ static long f2fs_alloc_blocks_in_free_list(struct super_block *sb, struct free_l
 			if( curr == free_list->first_node) {
 				next_node = rb_next(temp);
 				if(next_node)
-					next = container_of(next_node, struct nova_range_node, node);
+					next = container_of(next_node, struct f2fs_range_node, node);
 				free_list->first_node = next;
 			}
 			
 			if( curr == free_list->last_node) {
 				prev_node = rb_prev(temp);
 				if(prev_node)
-					prev = container_of(prev_node, struct nova_range_node, node);
+					prev = container_of(prev_node, struct f2fs_range_node, node);
 				free_list->last_node = prev;
 			}
 
