@@ -7,9 +7,9 @@ For resolving performance degradation caused by fsync, hybridF2FS uses NVM as a 
 
 Preliquisite
 ----
-Builiding and Install Kerenl
+Builiding and Install Kernel
 ```
-https://kernelnewbies.org
+https://kernelnewbies.org/KernelBuild
 ```
 
 Emulation with Intel PMEM Driver
@@ -41,4 +41,5 @@ sudo mount -t f2fs -o pmem=/dev/pmem0 /dev/nvme0n1 /mnt/f2fs
 TODO
 ----
 We have to allocate nvm area sequentially to log.
+
 We will move to resolving scalability issues.
