@@ -1546,6 +1546,7 @@ struct workqueue_struct *post_read_wq;	/* post read workqueue */
 	unsigned long pmem_size;
 	phys_addr_t phys_addr;
 	struct free_list *free_list;
+	unsigned long curr;
 };
 
 struct f2fs_private_dio {

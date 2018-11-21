@@ -53,6 +53,7 @@ struct node_info {
 	block_t	blk_addr;	/* block address of the node */
 	unsigned char version;	/* version of the node */
 	unsigned char flag;	/* for node information bits */
+	unsigned char nvm;
 };
 
 struct nat_entry {
