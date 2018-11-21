@@ -94,7 +94,7 @@ void f2fs_init_blockmap(struct super_block *sb, int recovery){
 
 }
 
-static inline int nova_rbtree_compare_rangenode(struct f2fs_range_node *curr,
+static inline int f2fs_rbtree_compare_rangenode(struct f2fs_range_node *curr,
 		        unsigned long key, enum node_type type)
 {
 	if (type == NODE_DIR) {
@@ -114,6 +114,34 @@ static inline int nova_rbtree_compare_rangenode(struct f2fs_range_node *curr,
 	return 0;
 }
 
+int f2fs_find_range_node(struct rb_root *tree, unsigned long key, enum node_type type, struct f2fs_range_node **ret_node){
+	struct f2fs_range_node *curr = NULL;
+	struct rb_node *temp;
+	int compVal;
+	int ret = 0;
+
+	temp = tree->rb_node;
+
+	while(temp){
+		curr = container_of(temp, struct f2fs_range_node, node);
+		compVal = f2fs_rbtree_compare_rangenode(curr, key, type);
+
+		if(compVal == -1){
+			temp = temp->rb_left;
+		}
+		else if(compVal == 1){
+			temp = temp->rb_right;
+		}
+		else{
+			ret = 1;
+			break;
+		}
+	}
+
+	*ret_node = curr;
+	return ret;
+}
+
 int f2fs_insert_range_node(struct rb_root *tree, struct f2fs_range_node *new_node, enum node_type type){
 	struct f2fs_range_node *curr;
 	struct rb_node **temp, *parent;
@@ -124,7 +152,7 @@ int f2fs_insert_range_node(struct rb_root *tree, struct f2fs_range_node *new_nod
 
 	while(*temp){
 		curr = container_of(*temp, struct f2fs_range_node, node);
-		compVal = nova_rbtree_compare_rangenode(curr, new_node->range_low, type);
+		compVal = f2fs_rbtree_compare_rangenode(curr, new_node->range_low, type);
 
 		parent = *temp;
 
@@ -291,4 +319,138 @@ int f2fs_new_blocks(struct super_block *sb, unsigned long *blocknr, unsigned int
 	return ret_blocks;
 }
 
+int f2fs_find_free_slot(struct rb_root *tree, unsigned long range_low, unsigned long range_high, struct f2fs_range_node **prev, struct f2fs_range_node **next){
+	struct f2fs_range_node *ret_node = NULL;
+	struct rb_node *tmp;
+	int ret;
 
+	ret = f2fs_find_range_node(tree, range_low, NODE_BLOCK, &ret_node);
+	if(ret){
+		//f2fs_msg
+		return -EINVAL;
+	}
+
+	if(!ret_node){
+		*prev=*next=NULL;
+	}
+	else if(ret_node->range_high < range_low){
+		*prev=ret_node;
+		tmp = rb_next(&ret_node->node);
+		if(tmp)
+			*next = container_of(tmp, struct f2fs_range_node, node);
+		else
+			*next=NULL;
+	}
+	else if(ret_node->range_low > range_high){
+		*next = ret_node;
+		tmp = rb_prev(&ret_node->node);
+		if(tmp)
+			*prev = container_of(tmp, struct f2fs_range_node, node);
+		else
+			*prev=NULL;
+	}
+	else{
+		//f2fs_msg
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int f2fs_free_blocks(struct super_block *sb, unsigned long blocknr, int num){
+
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+	struct rb_root *tree;
+	unsigned long block_low;
+	unsigned long block_high;
+	unsigned long num_blocks=0;
+	struct f2fs_range_node *prev = NULL;
+	struct f2fs_range_node *next = NULL;
+	struct f2fs_range_node *curr = NULL;
+	struct free_list *free_list;
+	int cpuid;
+	int new_node_used = 0;
+	int ret;
+
+	if(num <= 0){
+			f2fs_msg(sb, KERN_ERR, "%s ERROR: free %d", __func__, num);
+			return -EINVAL;
+	}
+
+	cpuid = 0;
+
+	curr = f2fs_alloc_blocknode(sb);
+	if(curr == NULL)
+		return -ENOMEM;
+
+	free_list = sbi->free_list;
+	spin_lock(&free_list->s_lock);
+
+	tree = &(free_list->block_free_tree);
+
+	num_blocks = num; //number of blocks
+	block_low = blocknr;
+	block_high = blocknr + num_blocks - 1;
+
+	if(blocknr < free_list->block_start || blocknr+num > free_list->block_end +1){
+		f2fs_msg(sb, KERN_ERR, "free lbocks %lu to %lu, free list %d, start %lu, end %lu",
+				blocknr, blocknr + num -1,
+				0, free_list->block_start, free_list->block_end);
+		ret = -EIO;
+		goto out;
+	}
+
+	ret = f2fs_find_free_slot(tree, block_low, block_high, &prev, &next);
+
+	if(ret){
+		f2fs_msg(sb, KERN_ERR, "%s: find free slot fail: %d", __func__, ret);
+		goto out;
+	}
+
+	if(prev && next && (block_low == prev->range_high +1) && (block_high + 1 == next->range_low)){
+		/*fits the hole*/
+		rb_erase(&next->node, tree);
+		free_list->num_blocknode--;
+		prev->range_high = next->range_high;
+		if(free_list->last_node == next)
+			free_list->last_node = prev;
+		f2fs_free_blocknode(next);
+		goto block_found;
+	}
+	if(prev && (block_low == prev->range_high + 1 )){
+		/*Aligns left*/
+		prev->range_high += num_blocks;
+		goto block_found;
+	}
+	if(next && (block_high + 1 == next->range_low)){
+		/*Aligns right*/
+		next->range_low -= num_blocks;
+		goto block_found;
+	}
+
+	/*Aligns somewhere in the middle */
+	curr->range_low = block_low;
+	curr->range_high = block_high;
+	new_node_used = 1;
+	ret = f2fs_insert_blocktree(tree, curr);
+	if(ret){
+		new_node_used=0;
+		goto out;
+	}
+	if(!prev)
+		free_list->first_node = curr;
+	if(!next)
+		free_list->last_node = curr;
+
+	free_list->num_blocknode++;
+
+block_found:
+	free_list->num_free_blocks += num_blocks;
+
+out:
+	spin_unlock(&free_list->s_lock);
+	if(new_node_used == 0)
+		f2fs_free_blocknode(curr);
+
+	return ret;	
+}

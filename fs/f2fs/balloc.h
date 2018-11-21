@@ -116,6 +116,7 @@ void nova_free_vma_item(struct super_block *sb,
 	struct vma_item *item);
 */
 extern void f2fs_init_blockmap(struct super_block *sb, int recovery);
+extern int f2fs_free_blocks(struct super_block *sb, unsigned long blocknr, int num);
 /*
 extern int nova_free_data_blocks(struct super_block *sb,
 	struct nova_inode_info_header *sih, unsigned long blocknr, int num);
@@ -143,16 +144,18 @@ int f2fs_insert_blocktree(struct rb_root *tree,
 /*
 int nova_insert_inodetree(struct nova_sb_info *sbi,
 	struct nova_range_node *new_node, int cpu);
+*/
 int nova_find_free_slot(struct rb_root *tree, unsigned long range_low,
 	unsigned long range_high, struct nova_range_node **prev,
 	struct nova_range_node **next);
-*/
+
 extern int f2fs_insert_range_node(struct rb_root *tree,
 	struct f2fs_range_node *new_node, enum node_type type);
-/*
+
 extern int nova_find_range_node(struct rb_root *tree,
 	unsigned long key, enum node_type type,
 	struct nova_range_node **ret_node);
+/*
 extern void nova_destroy_range_node_tree(struct super_block *sb,
 	struct rb_root *tree);
 */

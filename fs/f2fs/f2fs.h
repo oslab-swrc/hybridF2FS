@@ -1152,6 +1152,7 @@ struct f2fs_sb_info {
 	unsigned long pmem_size;
 	phys_addr_t phys_addr;
 	struct free_list *free_list;
+	unsigned long curr;
 };
 
 #ifdef CONFIG_F2FS_FAULT_INJECTION
