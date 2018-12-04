@@ -885,11 +885,11 @@ while ((p = strsep(&options, ",")) != NULL) {
         F2FS_OPTION(sbi).compress_ext_cnt++;
         kfree(name);
     /* BHK */
-    case Opt_pmem:
-        name=match_strdup(&args[0]);
-        if(strlen(name)!=0){
-            f2fs_msg(sb, KERN_INFO, "|pmem = %s|%d", name, strlen(name));
-            strcpy(sbi->pmem_dev, name);
+		case Opt_pmem:
+			name=match_strdup(&args[0]);
+			if(strlen(name)!=0){
+				f2fs_msg(sb, KERN_INFO, "|pmem = %s|%lu", name, strlen(name));
+				strcpy(sbi->pmem_dev, name);
 //				f2fs_msg(sb, KERN_INFO, "|copied  = %s|%d", sbi->pmem_dev, strlen(sbi->pmem_dev));
             set_opt(sbi, PMEM);
         }

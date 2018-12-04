@@ -492,13 +492,16 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 
 	/* change address */
 	nat_set_blkaddr(e, new_blkaddr);
-	if (!__is_valid_data_blkaddr(new_blkaddr))
-		set_nat_flag(e, IS_CHECKPOINTED, false);
-	__set_nat_cache_dirty(nm_i, e);
 
-	if( test_opt(sbi, PMEM) && new_blkaddr != NEW_ADDR )	// BHK
+	if( test_opt(sbi, PMEM) && new_blkaddr != NEW_ADDR ){	// BHK
 		nvm_write_nat_f2fs(sbi, e);			// BHK
+		goto clean;
+	}
+    if (!__is_valid_data_blkaddr(new_blkaddr))
+        set_nat_flag(e, IS_CHECKPOINTED, false);
+    __set_nat_cache_dirty(nm_i, e);
 
+clean:
 	/* update fsync_mark if its inode nat entry is still alive */
 	if (ni->nid != ni->ino)
 		e = __lookup_nat_cache(nm_i, ni->ino);
@@ -507,6 +510,7 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 			set_nat_flag(e, HAS_FSYNCED_INODE, true);
 		set_nat_flag(e, HAS_LAST_FSYNC, fsync_done);
 	}
+
 	up_write(&nm_i->nat_tree_lock);
 }
 
@@ -556,7 +560,7 @@ static int nvm_read_nat_f2fs(struct f2fs_sb_info *sbi, struct node_info *ni, nid
 	ret = __copy_to_user(&e, vaddr, sizeof(struct nat_entry));
 
 	f2fs_msg(sbi->sb, KERN_ERR, "copy to user read = %d", ret);
-	f2fs_msg(sbi->sb, KERN_INFO, "e->ni.nid = %d, e->ni.ino = %d, e->ni.blk_addr = %p", e.ni.nid, e.ni.ino, e.ni.blk_addr);
+	f2fs_msg(sbi->sb, KERN_INFO, "e->ni.nid = %d, e->ni.ino = %d, e->ni.blk_addr = %u", e.ni.nid, e.ni.ino, e.ni.blk_addr);
 
 	if( ret != 0 )
 		return ret;
@@ -564,6 +568,9 @@ static int nvm_read_nat_f2fs(struct f2fs_sb_info *sbi, struct node_info *ni, nid
 	ni->ino = e.ni.ino;
 	ni->blk_addr = e.ni.blk_addr;
 	ni->version = e.ni.version;
+	ni->nvm = e.ni.nvm;
+
+	return 0;
 }
 
 /*
@@ -1367,6 +1374,21 @@ static int read_node_page(struct page *page, int op_flags)
 	if (err)
 		return err;
 
+
+	/*   BHK   */
+
+	if( test_opt(sbi, PMEM) && ni.nvm > 0 ){ // && ni.nvm >0
+		int ret;
+		void *vaddr = sbi->virt_addr + (ni.blk_addr << PAGE_SHIFT);
+
+		ret = __copy_to_user(page, vaddr, PAGE_SIZE);	
+
+		if( ret < 0)
+			f2fs_msg(sbi->sb, KERN_ERR, " __copy_to_user: return : %d", ret);
+		
+		return 0;
+	}
+
 	if (unlikely(ni.blk_addr == NULL_ADDR) ||
 			is_sbi_flag_set(sbi, SBI_IS_SHUTDOWN)) {
 		ClearPageUptodate(page);
@@ -1654,17 +1676,17 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		allocated = f2fs_new_blocks(sbi->sb, &blocknr, 1, 0, 0, DATA_NOVA, ALLOC_FROM_HEAD); // btype is blktype for superpage?
 		//f2fs_new_blocks allocates a block and returen the address blocknr
 	
-		f2fs_msg(sbi->sb, KERN_INFO, "f2fs_new_blocks = %d, blocknr = %x", allocated, blocknr);
+		f2fs_msg(sbi->sb, KERN_INFO, "f2fs_new_blocks = %d, blocknr = %lx", allocated, blocknr);
 
 		if(allocated == 0)
 			return -ENOSPC;
-		vaddr += blocknr;	
+		vaddr += (blocknr << PAGE_SHIFT);	
 		//memcpy page to blocknr
 		ret = __copy_from_user_inatomic_nocache((void*)vaddr, page, PAGE_SIZE);
 		set_node_addr(sbi, &ni, (unsigned int)blocknr, is_fsync_dnode(page));
 
 		if(isnvm != 0)
-		f2fs_free_blocks(sbi->sb, prev_blocknr, 1);
+			f2fs_free_blocks(sbi->sb, prev_blocknr, 1);
 
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
 		up_read(&sbi->node_write);
