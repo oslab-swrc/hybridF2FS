@@ -438,13 +438,11 @@ static void nvm_write_nat_f2fs(struct f2fs_sb_info *sbi, struct nat_entry *e){
 	void *vaddr = sbi->virt_addr + nid * sizeof(struct nat_entry) + nat_blkaddr;// 1segment for CP
 
 //	f2fs_msg(sbi->sb, KERN_INFO, "sbi->cur_cp_pack = %d", sbi->cur_cp_pack);
-	f2fs_msg(sbi->sb, KERN_INFO, "nvm_write_nat_f2fs: vaddr = %p e->ni.nid = %d", vaddr, nid);
-
-	e->ni.nvm=1;
+//	f2fs_msg(sbi->sb, KERN_INFO, "nvm_write_nat_f2fs: vaddr = %p e->ni.nid = %d", vaddr, nid);
 
 	ret=__copy_from_user_inatomic(vaddr, e, sizeof(struct nat_entry));
 
-	f2fs_msg(sbi->sb, KERN_INFO, "nvm_write_nat_f2fs: __copy_from_user_inatomic = %d", ret);
+//	f2fs_msg(sbi->sb, KERN_INFO, "nvm_write_nat_f2fs: __copy_from_user_inatomic = %d", ret);
 }
 
 static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
@@ -474,7 +472,7 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 		__free_nat_entry(new);
 
 	/* sanity check */
-	f2fs_msg(sbi->sb, KERN_INFO, "nid = %d, nat_get_blkaddr(e) = %u, ni->blk_addr = %u", ni->nid,nat_get_blkaddr(e), ni->blk_addr);
+//	f2fs_msg(sbi->sb, KERN_INFO, "nid = %d, nat_get_blkaddr(e) = %u, ni->blk_addr = %u", ni->nid,nat_get_blkaddr(e), ni->blk_addr);
 
 	f2fs_bug_on(sbi, nat_get_blkaddr(e) != ni->blk_addr);
 	f2fs_bug_on(sbi, nat_get_blkaddr(e) == NULL_ADDR &&
@@ -555,12 +553,12 @@ static int nvm_read_nat_f2fs(struct f2fs_sb_info *sbi, struct node_info *ni, nid
 	struct nat_entry e;
 	int ret;
 
-	f2fs_msg(sbi->sb, KERN_INFO, "nvm_read_nat_f2fs nid = %d", nid);
+//	f2fs_msg(sbi->sb, KERN_INFO, "nvm_read_nat_f2fs nid = %d", nid);
 
 	ret = __copy_to_user(&e, vaddr, sizeof(struct nat_entry));
 
-	f2fs_msg(sbi->sb, KERN_ERR, "copy to user read = %d", ret);
-	f2fs_msg(sbi->sb, KERN_INFO, "e->ni.nid = %d, e->ni.ino = %d, e->ni.blk_addr = %u", e.ni.nid, e.ni.ino, e.ni.blk_addr);
+//	f2fs_msg(sbi->sb, KERN_ERR, "copy to user read = %d", ret);
+//	f2fs_msg(sbi->sb, KERN_INFO, "e->ni.nid = %d, e->ni.ino = %d, e->ni.blk_addr = %u", e.ni.nid, e.ni.ino, e.ni.blk_addr);
 
 	if( ret != 0 )
 		return ret;
@@ -591,7 +589,7 @@ int f2fs_get_node_info(struct f2fs_sb_info *sbi, nid_t nid,
 	block_t blkaddr;
 	int i;
 
-	f2fs_msg(sbi->sb, KERN_INFO, "get_node_info for nid = %d", nid);
+//	f2fs_msg(sbi->sb, KERN_INFO, "get_node_info for nid = %d", nid);
 
 	ni->nid = nid;
 
@@ -599,7 +597,7 @@ int f2fs_get_node_info(struct f2fs_sb_info *sbi, nid_t nid,
 	down_read(&nm_i->nat_tree_lock);
 	e = __lookup_nat_cache(nm_i, nid);
 	if (e) {
-		f2fs_msg(sbi->sb, KERN_INFO, "get_node_info: __lookup_nat_cache success");
+//		f2fs_msg(sbi->sb, KERN_INFO, "get_node_info: __lookup_nat_cache success");
 		ni->ino = nat_get_ino(e);
 		ni->blk_addr = nat_get_blkaddr(e);
 		ni->version = nat_get_version(e);
@@ -618,7 +616,7 @@ int f2fs_get_node_info(struct f2fs_sb_info *sbi, nid_t nid,
 	}
 	up_read(&curseg->journal_rwsem);
 	if (i >= 0) {
-		f2fs_msg(sbi->sb, KERN_INFO, "goto cache");
+//		f2fs_msg(sbi->sb, KERN_INFO, "goto cache");
 		up_read(&nm_i->nat_tree_lock);
 		goto cache;
 	}
@@ -1597,7 +1595,6 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 
 	unsigned long blocknr=0;
 	int allocated = 0, ret;
-	void *vaddr=sbi->virt_addr;
 
 	struct f2fs_io_info fio = {
 		.sbi = sbi,
@@ -1670,19 +1667,34 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	//here to write node log to nvm
 	//f2fs_new_blocks()
 	if( test_opt(sbi, PMEM) ){
+		void *vaddr=sbi->virt_addr;
 		unsigned long prev_blocknr = ni.blk_addr;
 		unsigned char isnvm = ni.nvm;
+		struct f2fs_node *raw_node = F2FS_NODE(page);
+		unsigned long size;
 
-		allocated = f2fs_new_blocks(sbi->sb, &blocknr, 1, 0, 0, DATA_NOVA, ALLOC_FROM_HEAD); // btype is blktype for superpage?
-		//f2fs_new_blocks allocates a block and returen the address blocknr
+		allocated = f2fs_new_blocks(sbi->sb, &blocknr, 1, 0, 0, DATA_NOVA, ALLOC_FROM_HEAD); // f2fs_new_blocks allocates a block and returen the address blocknr
 	
-		f2fs_msg(sbi->sb, KERN_INFO, "f2fs_new_blocks = %d, blocknr = %lx", allocated, blocknr);
+//		f2fs_msg(sbi->sb, KERN_INFO, "f2fs_new_blocks = %d, blocknr = %lx", allocated, blocknr);
 
 		if(allocated == 0)
 			return -ENOSPC;
 		vaddr += (blocknr << PAGE_SHIFT);	
+
 		//memcpy page to blocknr
-		ret = __copy_from_user_inatomic_nocache((void*)vaddr, page, PAGE_SIZE);
+		if(IS_INODE(page)){
+			size = 380 + 4 *(raw_node->i.i_blocks) + (raw_node->i.i_extra_isize); // 380bytes for inode, 4bytes for block addr(__le32)
+			if(size > PAGE_SIZE)
+				size = PAGE_SIZE;
+		}
+		else
+			size = PAGE_SIZE;
+
+		f2fs_msg(sbi->sb, KERN_INFO, "write_node_page: size to memcopy = %lu", size);
+
+		ret = __copy_from_user_inatomic_nocache((void*)vaddr, page, size); //copy only small bytes
+
+		ni.nvm=1;
 		set_node_addr(sbi, &ni, (unsigned int)blocknr, is_fsync_dnode(page));
 
 		if(isnvm != 0)
@@ -1691,6 +1703,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
 		up_read(&sbi->node_write);
 		unlock_page(page);
+
 		return 0;
 	//write()
 	}

@@ -53,7 +53,7 @@ struct node_info {
 	block_t	blk_addr;	/* block address of the node */
 	unsigned char version;	/* version of the node */
 	unsigned char flag;	/* for node information bits */
-	unsigned char nvm;
+	u64 nvm;
 };
 
 struct nat_entry {
@@ -80,6 +80,7 @@ static inline void copy_node_info(struct node_info *dst,
 	dst->blk_addr = src->blk_addr;
 	dst->version = src->version;
 	/* should not copy flag here */
+	dst->nvm = src->nvm;
 }
 
 static inline void set_nat_flag(struct nat_entry *ne,

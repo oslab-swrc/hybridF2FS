@@ -311,13 +311,13 @@ struct node_footer {
 } __packed;
 
 struct f2fs_node {
+	struct node_footer footer;
 	/* can be one of three types: inode, direct, and indirect types */
 	union {
 		struct f2fs_inode i;
 		struct direct_node dn;
 		struct indirect_node in;
 	};
-	struct node_footer footer;
 } __packed;
 
 /*

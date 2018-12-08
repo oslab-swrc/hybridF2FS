@@ -491,7 +491,7 @@ u32 segments;		/* # of segments to flush */
 #define DEF_INLINE_RESERVED_SIZE	1
 static inline int get_extra_isize(struct inode *inode);
 static inline int get_inline_xattr_addrs(struct inode *inode);
-#define MAX_INLINE_DATA(inode)	(sizeof(__le32) *			\
+#define MAX_INLINE_DATA(inode)	0 //(sizeof(__le32) *			\
             (CUR_ADDRS_PER_INODE(inode) -		\
             get_inline_xattr_addrs(inode) -	\
             DEF_INLINE_RESERVED_SIZE))
@@ -1546,7 +1546,9 @@ struct workqueue_struct *post_read_wq;	/* post read workqueue */
 	unsigned long pmem_size;
 	phys_addr_t phys_addr;
 	struct free_list *free_list;
-	unsigned long curr;
+	unsigned long curr_block;
+	unsigned char curr_offset;
+	spinlock_t nvm_lock;
 };
 
 struct f2fs_private_dio {
