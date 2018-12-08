@@ -1375,17 +1375,18 @@ static int read_node_page(struct page *page, int op_flags)
 
 	/*   BHK   */
 
-	if( test_opt(sbi, PMEM) && ni.nvm > 0 ){ // && ni.nvm >0
-		int ret;
-		void *vaddr = sbi->virt_addr + (ni.blk_addr << PAGE_SHIFT);
-
-		ret = __copy_to_user(page, vaddr, PAGE_SIZE);	
-
-		if( ret < 0)
-			f2fs_msg(sbi->sb, KERN_ERR, " __copy_to_user: return : %d", ret);
-		
-		return 0;
-	}
+///	if( test_opt(sbi, PMEM) && ni.nvm > 0 ){ // && ni.nvm >0
+//		int ret;
+//		void *vaddr = sbi->virt_addr + (ni.blk_addr << PAGE_SHIFT);
+//
+//		ret = __copy_to_user(page, vaddr, PAGE_SIZE);	
+//
+//		if( ret < 0)
+//			f2fs_msg(sbi->sb, KERN_ERR, " __copy_to_user: return : %d", ret);
+//		ClearPageUptodate(page);
+//		
+//		return LOCKED_PAGE;
+//	}
 
 	if (unlikely(ni.blk_addr == NULL_ADDR) ||
 			is_sbi_flag_set(sbi, SBI_IS_SHUTDOWN)) {
