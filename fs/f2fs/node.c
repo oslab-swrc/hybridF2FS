@@ -490,14 +490,14 @@ static void set_node_addr(struct f2fs_sb_info *sbi, struct node_info *ni,
 
 	/* change address */
 	nat_set_blkaddr(e, new_blkaddr);
+    if (!__is_valid_data_blkaddr(new_blkaddr))
+        set_nat_flag(e, IS_CHECKPOINTED, false);
+    __set_nat_cache_dirty(nm_i, e);
 
 	if( test_opt(sbi, PMEM) && new_blkaddr != NEW_ADDR ){	// BHK
 		nvm_write_nat_f2fs(sbi, e);			// BHK
 		goto clean;
 	}
-    if (!__is_valid_data_blkaddr(new_blkaddr))
-        set_nat_flag(e, IS_CHECKPOINTED, false);
-    __set_nat_cache_dirty(nm_i, e);
 
 clean:
 	/* update fsync_mark if its inode nat entry is still alive */
@@ -1674,6 +1674,8 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		struct f2fs_node *raw_node = F2FS_NODE(page);
 		unsigned long size;
 
+		spin_lock(&sbi->nvm_lock);
+
 		allocated = f2fs_new_blocks(sbi->sb, &blocknr, 1, 0, 0, DATA_NOVA, ALLOC_FROM_HEAD); // f2fs_new_blocks allocates a block and returen the address blocknr
 	
 //		f2fs_msg(sbi->sb, KERN_INFO, "f2fs_new_blocks = %d, blocknr = %lx", allocated, blocknr);
@@ -1700,7 +1702,9 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 
 		if(isnvm != 0)
 			f2fs_free_blocks(sbi->sb, prev_blocknr, 1);
-
+		
+		spin_unlock(&sbi->nvm_lock);
+		
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
 		up_read(&sbi->node_write);
 		unlock_page(page);

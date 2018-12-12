@@ -491,7 +491,7 @@ u32 segments;		/* # of segments to flush */
 #define DEF_INLINE_RESERVED_SIZE	1
 static inline int get_extra_isize(struct inode *inode);
 static inline int get_inline_xattr_addrs(struct inode *inode);
-#define MAX_INLINE_DATA(inode)	0 //(sizeof(__le32) *			\
+#define MAX_INLINE_DATA(inode)	(sizeof(__le32) *			\
             (CUR_ADDRS_PER_INODE(inode) -		\
             get_inline_xattr_addrs(inode) -	\
             DEF_INLINE_RESERVED_SIZE))
