@@ -555,7 +555,7 @@ static int nvm_read_nat_f2fs(struct f2fs_sb_info *sbi, struct node_info *ni, nid
 
 //	f2fs_msg(sbi->sb, KERN_INFO, "nvm_read_nat_f2fs nid = %d", nid);
 
-	ret = __copy_to_user(&e, vaddr, sizeof(struct nat_entry));
+	ret = __copy_to_user_inatomic(&e, vaddr, sizeof(struct nat_entry));
 
 //	f2fs_msg(sbi->sb, KERN_ERR, "copy to user read = %d", ret);
 //	f2fs_msg(sbi->sb, KERN_INFO, "e->ni.nid = %d, e->ni.ino = %d, e->ni.blk_addr = %u", e.ni.nid, e.ni.ino, e.ni.blk_addr);
@@ -1371,28 +1371,27 @@ static int read_node_page(struct page *page, int op_flags)
 	err = f2fs_get_node_info(sbi, page->index, &ni);
 	if (err)
 		return err;
-
-
-	/*   BHK   */
-
-///	if( test_opt(sbi, PMEM) && ni.nvm > 0 ){ // && ni.nvm >0
-//		int ret;
-//		void *vaddr = sbi->virt_addr + (ni.blk_addr << PAGE_SHIFT);
-//
-//		ret = __copy_to_user(page, vaddr, PAGE_SIZE);	
-//
-//		if( ret < 0)
-//			f2fs_msg(sbi->sb, KERN_ERR, " __copy_to_user: return : %d", ret);
-//		ClearPageUptodate(page);
-//		
-//		return LOCKED_PAGE;
-//	}
-
 	if (unlikely(ni.blk_addr == NULL_ADDR) ||
 			is_sbi_flag_set(sbi, SBI_IS_SHUTDOWN)) {
 		ClearPageUptodate(page);
 		return -ENOENT;
 	}
+
+	/*   BHK   */
+
+	if( test_opt(sbi, PMEM) && ni.nvm > 0 && ni.nid > 3 ){ // && ni.nvm >0
+		int ret;
+		void *vaddr = sbi->virt_addr + (ni.blk_addr << PAGE_SHIFT);
+
+		ret = __copy_to_user_inatomic(page, vaddr, PAGE_SIZE);	
+
+		if( ret < 0)
+			f2fs_msg(sbi->sb, KERN_ERR, " __copy_to_user: return : %d", ret);
+		
+		return 0;
+	}
+
+	/*         */
 
 	fio.new_blkaddr = fio.old_blkaddr = ni.blk_addr;
 	return f2fs_submit_page_bio(&fio);
@@ -1686,7 +1685,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 
 		//memcpy page to blocknr
 		if(IS_INODE(page)){
-			size = 380 + 4 *(raw_node->i.i_blocks) + (raw_node->i.i_extra_isize); // 380bytes for inode, 4bytes for block addr(__le32)
+			size = 24 + 380 + 4 *(raw_node->i.i_blocks) + (raw_node->i.i_extra_isize); // 24bytes(192) bytes footer + 380bytes for inode, 4bytes for block addr(__le32)
 			if(size > PAGE_SIZE)
 				size = PAGE_SIZE;
 		}
