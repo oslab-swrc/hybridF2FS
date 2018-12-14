@@ -3107,6 +3107,12 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	mutex_lock(&curseg->curseg_mutex);
 	down_write(&sit_i->sentry_lock);
 
+	if(test_opt(sbi,PMEM) && IS_NODESEG(type)){
+		goto next;	
+	//	mutex_unlock(&sit_i->sentry_lock);
+	//	mutex_unlock(&curseg->curseg_mutex);
+	//	return; 
+	}
 	*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 
 	f2fs_wait_discard_bio(sbi, *new_blkaddr);
@@ -3141,12 +3147,16 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	locate_dirty_segment(sbi, GET_SEGNO(sbi, old_blkaddr));
 	locate_dirty_segment(sbi, GET_SEGNO(sbi, *new_blkaddr));
 
+next:
+
 	up_write(&sit_i->sentry_lock);
 
 	if (page && IS_NODESEG(type)) {
 		fill_node_footer_blkaddr(page, NEXT_FREE_BLKADDR(sbi, curseg));
 
 		f2fs_inode_chksum_set(sbi, page);
+		
+		goto out;
 	}
 
 	if (F2FS_IO_ALIGNED(sbi))
@@ -3162,7 +3172,7 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 		list_add_tail(&fio->list, &io->io_list);
 		spin_unlock(&io->io_lock);
 	}
-
+out:
 	mutex_unlock(&curseg->curseg_mutex);
 
 	up_read(&SM_I(sbi)->curseg_lock);

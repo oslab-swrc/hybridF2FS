@@ -1569,7 +1569,19 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	if(test_opt(sbi, PMEM) ){
 		trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "start block_ops");
 
-		flush_nat_entries(sbi, cpc);
+
+		f2fs_flush_merged_writes(sbi);
+
+		ckpt_ver = cur_cp_version(ckpt);
+		ckpt->checkpoint_ver = cpu_to_le64(++ckpt_ver);
+
+//		flush_nat_entries(sbi, cpc);
+		err = block_operations(sbi);
+		if (err)
+			goto out;
+
+		trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "finish block_ops");
+
 		flush_sit_entries(sbi, cpc);
 
 		clear_prefree_segments(sbi, cpc);
@@ -1577,6 +1589,8 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		clear_sbi_flag(sbi, SBI_IS_DIRTY);
 		clear_sbi_flag(sbi, SBI_NEED_CP);
 	
+		unblock_operations(sbi);
+
 		trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "finish checkpoint");
 
 		goto out;
