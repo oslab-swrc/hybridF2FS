@@ -1571,9 +1571,9 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 
 		f2fs_flush_merged_writes(sbi);
 
-		err = block_operations(sbi);
-		if (err)
-			goto out;
+//		err = block_operations(sbi);
+//		if (err)
+//			goto out;
 
 		trace_f2fs_write_checkpoint(sbi->sb, cpc->reason, "finish block_ops");
 		
@@ -1598,7 +1598,7 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 
 		clear_prefree_segments(sbi, cpc);
 	
-		unblock_operations(sbi);
+//		unblock_operations(sbi);
 
 		stat_inc_cp_count(sbi->stat_info);
 		f2fs_update_time(sbi, CP_TIME);
