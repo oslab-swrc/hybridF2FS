@@ -3050,12 +3050,13 @@ int f2fs_flush_nat_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	}
 
 	/* flush dirty nats in nat entry set */
-	list_for_each_entry_safe(set, tmp, &sets, set_list) {
+/*	
+    list_for_each_entry_safe(set, tmp, &sets, set_list) {
 		err = __flush_nat_entry_set(sbi, set, cpc);
 		if (err)
 			break;
 	}
-
+*/
 	up_write(&nm_i->nat_tree_lock);
 	/* Allow dirty nats by node block allocation in write_begin */
 
