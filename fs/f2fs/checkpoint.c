@@ -1544,6 +1544,8 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(sbi);
 	unsigned long long ckpt_ver;
 	int err = 0;
+	unsigned long flags;
+	unsigned int data_sum_blocks;
 
 	if (f2fs_readonly(sbi->sb) || f2fs_hw_is_readonly(sbi))
 		return -EROFS;
@@ -1587,6 +1589,15 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 //		if (err)
 //			release_discard_addrs(sbi);
 //		else
+
+		/* ckpt_flags */
+		spin_lock_irqsave(&sbi->cp_lock, flags);
+        	if (data_sum_blocks < NR_CURSEG_DATA_TYPE)
+        	        __set_ckpt_flags(ckpt, CP_COMPACT_SUM_FLAG);
+        	else
+        	        __clear_ckpt_flags(ckpt, CP_COMPACT_SUM_FLAG);
+	        spin_unlock_irqrestore(&sbi->cp_lock, flags);
+
 		update_ckpt_flags(sbi, cpc);
 
 		/* update user_block_counts */

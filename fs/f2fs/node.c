@@ -434,6 +434,7 @@ static void nvm_write_nat_f2fs(struct f2fs_sb_info *sbi, struct nat_entry *e){
 	pgoff_t index = current_nat_addr(sbi, nid);
 	int ret;
 	block_t nat_blkaddr = nm_i->nat_blkaddr;
+	unsigned int nid_ofs = nid - START_NID(nid);
 
 	void *vaddr = sbi->virt_addr + nid * sizeof(struct nat_entry) + nat_blkaddr;// 1segment for CP
 
@@ -441,6 +442,18 @@ static void nvm_write_nat_f2fs(struct f2fs_sb_info *sbi, struct nat_entry *e){
 //	f2fs_msg(sbi->sb, KERN_INFO, "nvm_write_nat_f2fs: vaddr = %p e->ni.nid = %d", vaddr, nid);
 
 	ret=__copy_from_user_inatomic(vaddr, e, sizeof(struct nat_entry));
+
+	nat_reset_flag(e);
+
+		/* __clear_nat_cache_dirty) */
+	//	list_move_tail(&e->list, &nm_i->nat_entries);
+		set_nat_flag(e, IS_DIRTY, false);
+	//	nm_i->dirty_nat_cnt--;
+	
+		/* update_free_nid_bitmap(sbi, nid, false, false); */
+		__clear_bit_le(nid_ofs, nm_i->free_nid_bitmap[blockoff]);
+	//	nm_i->free_nid_count[blockoff]--;
+
 
 //	f2fs_msg(sbi->sb, KERN_INFO, "nvm_write_nat_f2fs: __copy_from_user_inatomic = %d", ret);
 }
@@ -3040,14 +3053,14 @@ int f2fs_flush_nat_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		!__has_cursum_space(journal, nm_i->dirty_nat_cnt, NAT_JOURNAL))
 		remove_nats_in_journal(sbi);
 
-	while ((found = __gang_lookup_nat_set(nm_i,
-					set_idx, SETVEC_SIZE, setvec))) {
-		unsigned idx;
-		set_idx = setvec[found - 1]->set + 1;
-		for (idx = 0; idx < found; idx++)
-			__adjust_nat_entry_set(setvec[idx], &sets,
-						MAX_NAT_JENTRIES(journal));
-	}
+//	while ((found = __gang_lookup_nat_set(nm_i,
+//					set_idx, SETVEC_SIZE, setvec))) {
+//		unsigned idx;
+//		set_idx = setvec[found - 1]->set + 1;
+//		for (idx = 0; idx < found; idx++)
+//			__adjust_nat_entry_set(setvec[idx], &sets,
+//						MAX_NAT_JENTRIES(journal));
+//	}
 
 	/* flush dirty nats in nat entry set */
 /*	
