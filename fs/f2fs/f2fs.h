@@ -1548,7 +1548,7 @@ struct workqueue_struct *post_read_wq;	/* post read workqueue */
 	struct free_list *free_list;
 	unsigned long curr_block;
 	unsigned char curr_offset;
-	spinlock_t nvm_lock;
+	//spinlock_t nvm_lock;
 };
 
 struct f2fs_private_dio {

@@ -1363,6 +1363,7 @@ static int read_node_page(struct page *page, int op_flags)
 {
 	struct f2fs_sb_info *sbi = F2FS_P_SB(page);
 	struct node_info ni;
+	struct f2fs_node *rn = kmalloc(PAGE_SIZE, GFP_KERNEL);
 	struct f2fs_io_info fio = {
 		.sbi = sbi,
 		.type = NODE,
@@ -1397,9 +1398,11 @@ static int read_node_page(struct page *page, int op_flags)
 		void *vaddr = sbi->virt_addr + (ni.blk_addr << PAGE_SHIFT);
 
 		ret = __copy_to_user_inatomic(page, vaddr, PAGE_SIZE);	
+        page = virt_to_page(rn);
 
 		if( ret < 0)
 			f2fs_debug(sbi, KERN_ERR, " __copy_to_user: return : %d", ret);
+//		ClearPageUptodate(page);
 		
 		return 0;
 	}
@@ -1686,7 +1689,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		struct f2fs_node *raw_node = F2FS_NODE(page);
 		unsigned long size;
 
-		spin_lock(&sbi->nvm_lock);
+		//spin_lock(&sbi->nvm_lock);
 
 		allocated = f2fs_new_blocks(sbi->sb, &blocknr, 1, 0, 0, DATA_NOVA, ALLOC_FROM_HEAD); // f2fs_new_blocks allocates a block and returen the address blocknr
 	
@@ -1695,7 +1698,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		if(allocated == 0)
 			return -ENOSPC;
 		vaddr += (blocknr << PAGE_SHIFT);	
-
+		/*
 		//memcpy page to blocknr
 		if(IS_INODE(page)){
 			size = 24 + 380 + 4 *(raw_node->i.i_blocks) + (raw_node->i.i_extra_isize); // 24bytes(192) bytes footer + 380bytes for inode, 4bytes for block addr(__le32)
@@ -1703,19 +1706,20 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 				size = PAGE_SIZE;
 		}
 		else
-			size = PAGE_SIZE;
+		*/
+		size = PAGE_SIZE;
 
 		f2fs_debug(sbi, KERN_INFO, "write_node_page: size to memcopy = %lu", size);
 
-		ret = __copy_from_user_inatomic_nocache((void*)vaddr, page, size); //copy only small bytes
+		ret = __copy_from_user_inatomic_nocache((void *)vaddr, (void *)raw_node, size); //copy only small bytes
 
 		ni.nvm=1;
 		set_node_addr(sbi, &ni, (unsigned int)blocknr, is_fsync_dnode(page));
 
-		if(isnvm != 0)
+		if(isnvm != 0 && prev_blocknr != NEW_ADDR && prev_blocknr != NULL_ADDR)
 			f2fs_free_blocks(sbi->sb, prev_blocknr, 1);
 		
-		spin_unlock(&sbi->nvm_lock);
+		//spin_unlock(&sbi->nvm_lock);
 		
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
 		up_read(&sbi->node_write);

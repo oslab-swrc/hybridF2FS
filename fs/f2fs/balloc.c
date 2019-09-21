@@ -25,7 +25,7 @@ int f2fs_alloc_block_free_lists(struct super_block *sb){
 	spin_lock_init(&free_list->s_lock);
 	free_list->index = 0;
 
-	spin_lock_init(&sbi->nvm_lock);
+	//spin_lock_init(&sbi->nvm_lock);
 	sbi->curr_block=0;
 	sbi->curr_offset=0;
 
@@ -45,7 +45,7 @@ static void f2fs_init_free_list(struct super_block *sb, struct free_list *free_l
 	struct f2fs_sm_info *sm_info = sbi->sm_info;
 	block_t main_blkaddr = sm_info->main_blkaddr;
 
-	per_list_blocks = sbi->pmem_size;
+	per_list_blocks = sbi->pmem_size >> PAGE_SHIFT;
 
 	free_list->block_start = 0;
 	free_list->block_end = per_list_blocks -1;
