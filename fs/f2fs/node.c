@@ -1709,15 +1709,16 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		*/
 		size = PAGE_SIZE;
 
-		f2fs_debug(sbi, KERN_INFO, "write_node_page: size to memcopy = %lu", size);
+//		f2fs_debug(sbi, KERN_INFO, "write_node_page: size to memcopy = %lu", size);
 
 		ret = __copy_from_user_inatomic_nocache((void *)vaddr, (void *)raw_node, size); //copy only small bytes
 
 		ni.nvm=1;
 		set_node_addr(sbi, &ni, (unsigned int)blocknr, is_fsync_dnode(page));
 
-		if(isnvm != 0 && prev_blocknr != NEW_ADDR && prev_blocknr != NULL_ADDR)
+		if(isnvm != 0 && prev_blocknr != NEW_ADDR && prev_blocknr != NULL_ADDR) {
 			f2fs_free_blocks(sbi->sb, prev_blocknr, 1);
+		}
 		
 		//spin_unlock(&sbi->nvm_lock);
 		

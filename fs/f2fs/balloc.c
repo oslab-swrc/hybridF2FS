@@ -389,9 +389,11 @@ int f2fs_free_blocks(struct super_block *sb, unsigned long blocknr, int num){
 	block_low = blocknr;
 	block_high = blocknr + num_blocks - 1;
 
-	if(blocknr < free_list->block_start || blocknr+num > free_list->block_end +1){
+
+	if(block_low < free_list->block_start || block_high > free_list->block_end){
+//	if(blocknr < free_list->block_start || blocknr+num > free_list->block_end +1){
 		f2fs_debug(sbi, KERN_ERR, "free lbocks %lu to %lu, free list %d, start %lu, end %lu",
-				blocknr, blocknr + num -1,
+				block_low, block_high,
 				0, free_list->block_start, free_list->block_end);
 		ret = -EIO;
 		goto out;
