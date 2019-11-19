@@ -311,7 +311,7 @@ static int check_index_in_prev_nodes(struct f2fs_sb_info *sbi,
 	unsigned int offset;
 	block_t bidx;
 	int i;
-
+	//printk(KERN_ERR"check_index_in_prev_nodes start");
 	sentry = get_seg_entry(sbi, segno);
 	if (!f2fs_test_bit(blkoff, sentry->cur_valid_map))
 		return 0;
@@ -410,7 +410,7 @@ static int do_recover_data(struct f2fs_sb_info *sbi, struct inode *inode,
 	struct node_info ni;
 	unsigned int start, end;
 	int err = 0, recovered = 0;
-
+	//printk(KERN_ERR"do_recover_data start");
 	/* step 1: recover xattr */
 	if (IS_INODE(page)) {
 		recover_inline_xattr(inode, page);

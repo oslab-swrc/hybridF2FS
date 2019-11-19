@@ -216,7 +216,7 @@ static int __revoke_inmem_pages(struct inode *inode,
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct inmem_pages *cur, *tmp;
 	int err = 0;
-
+	//printk(KERN_ERR"__revoke_inmem_pages start");
 	list_for_each_entry_safe(cur, tmp, head, list) {
 		struct page *page = cur->page;
 
@@ -2339,6 +2339,12 @@ void allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	mutex_lock(&curseg->curseg_mutex);
 	mutex_lock(&sit_i->sentry_lock);
 
+	if(test_opt(sbi,PMEM) && IS_NODESEG(type)){
+		goto next;	
+	//	mutex_unlock(&sit_i->sentry_lock);
+	//	mutex_unlock(&curseg->curseg_mutex);
+	//	return; 
+	}
 	*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 
 	f2fs_wait_discard_bio(sbi, *new_blkaddr);
@@ -2362,12 +2368,16 @@ void allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	 */
 	refresh_sit_entry(sbi, old_blkaddr, *new_blkaddr);
 
+next:
+
 	mutex_unlock(&sit_i->sentry_lock);
 
 	if (page && IS_NODESEG(type)) {
 		fill_node_footer_blkaddr(page, NEXT_FREE_BLKADDR(sbi, curseg));
 
 		f2fs_inode_chksum_set(sbi, page);
+		
+		goto out;
 	}
 
 	if (add_list) {
@@ -2380,7 +2390,7 @@ void allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 		list_add_tail(&fio->list, &io->io_list);
 		spin_unlock(&io->io_lock);
 	}
-
+out:
 	mutex_unlock(&curseg->curseg_mutex);
 }
 

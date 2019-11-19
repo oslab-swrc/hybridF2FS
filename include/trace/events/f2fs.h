@@ -1512,6 +1512,74 @@ DEFINE_EVENT(f2fs_sync_dirty_inodes, f2fs_sync_dirty_inodes_exit,
 	TP_ARGS(sb, type, count)
 );
 
+TRACE_EVENT(f2fs_range_lock_begin,
+
+	TP_PROTO(struct inode *inode, unsigned int holds, loff_t pos, unsigned int len,
+				unsigned long st, unsigned long ed),
+
+	TP_ARGS(inode, holds, pos, len, st, ed),
+
+	TP_STRUCT__entry(
+		__field(dev_t,	dev)
+		__field(ino_t,	ino)
+                __field(unsigned int, holds)
+		__field(loff_t,	pos)
+		__field(unsigned int, len)
+		__field(unsigned long, st)
+                __field(unsigned long, ed)
+	),
+
+	TP_fast_assign(
+		__entry->dev	= inode->i_sb->s_dev;
+		__entry->ino	= inode->i_ino;
+                __entry->holds  = holds;
+		__entry->pos	= pos;
+		__entry->len	= len;
+		__entry->st     = st;
+                __entry->ed     = ed;
+	),
+
+	TP_printk("dev = (%d,%d), ino = %lu, holds = %u, pos = %llu, len = %u, st = %lu, ed = %lu",
+		show_dev_ino(__entry),
+                __entry->holds,
+		(unsigned long long)__entry->pos,
+		__entry->len,
+		__entry->st,
+                __entry->ed)
+);
+
+TRACE_EVENT(f2fs_range_lock_end,
+
+	TP_PROTO(struct inode *inode, loff_t pos, unsigned int len,
+				unsigned long st, unsigned long ed),
+
+	TP_ARGS(inode, pos, len, st, ed),
+
+	TP_STRUCT__entry(
+		__field(dev_t,	dev)
+		__field(ino_t,	ino)
+		__field(loff_t,	pos)
+		__field(unsigned int, len)
+		__field(unsigned long, st)
+                __field(unsigned long, ed)
+	),
+
+	TP_fast_assign(
+		__entry->dev	= inode->i_sb->s_dev;
+		__entry->ino	= inode->i_ino;
+		__entry->pos	= pos;
+		__entry->len	= len;
+		__entry->st     = st;
+                __entry->ed     = ed;
+	),
+
+	TP_printk("dev = (%d,%d), ino = %lu, pos = %llu, len = %u, st = %lu, ed = %lu",
+		show_dev_ino(__entry),
+		(unsigned long long)__entry->pos,
+		__entry->len,
+		__entry->st,
+                __entry->ed)
+);
 #endif /* _TRACE_F2FS_H */
 
  /* This part must be outside protection */

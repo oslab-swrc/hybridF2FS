@@ -670,6 +670,8 @@ struct inode {
 #endif
 
 	void			*i_private; /* fs or device private pointer */
+	atomic_t		start;
+	atomic_t		commit;
 } __randomize_layout;
 
 static inline unsigned int i_blocksize(const struct inode *node)

@@ -10,7 +10,7 @@
  */
 #ifndef _LINUX_F2FS_H
 #define _LINUX_F2FS_H
-
+#include <linux/pagemap.h>
 #include <linux/types.h>
 #include <linux/page-flags.h>
 #include <linux/buffer_head.h>
@@ -23,7 +23,7 @@
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/quotaops.h>
-
+#include <linux/range_lock.h>
 #include <linux/dax.h> /*BHK*/
 #include <linux/pfn_t.h>/*BHK*/
 #include <linux/rbtree.h>/*BHK*/
@@ -159,6 +159,8 @@ enum {
 #define DEF_CP_INTERVAL			60	/* 60 secs */
 #define DEF_IDLE_INTERVAL		5	/* 5 secs */
 
+/* NVM Exclusive Cache */
+#define NUM_NODE			10000000    /* number of node for rwlock */
 struct cp_control {
 	int reason;
 	__u64 trim_start;
@@ -599,7 +601,11 @@ struct f2fs_inode_info {
 
 	int i_extra_isize;		/* size of extra space located in i_addr */
 	kprojid_t i_projid;		/* id for project quota */
+        struct range_lock_tree *rltree; /* pointer for range lock tree */
+	atomic_t *segment_rwsem;        /* atomic variable for atomic-based range lock */
 };
+
+extern void range_lock_init(struct range_lock *lock, unsigned long start, unsigned long last);
 
 static inline void get_extent_info(struct extent_info *ext,
 					struct f2fs_extent *i_ext)
@@ -1145,14 +1151,18 @@ struct f2fs_sb_info {
 	int s_jquota_fmt;			/* Format of quota to use */
 #endif
 
-	/* BHK */
+	struct rw_semaphore *node_lock;
+	struct f2fs_node *node_copy;
 	struct dax_device *s_dax_dev;
 	void *virt_addr;
 	char pmem_dev[DISK_NAME_LEN];
 	unsigned long pmem_size;
 	phys_addr_t phys_addr;
 	struct free_list *free_list;
-	unsigned long curr;
+	unsigned long curr_block;
+	unsigned char curr_offset;
+        atomic_t *using_copy;
+	struct block_device* bdev;
 };
 
 #ifdef CONFIG_F2FS_FAULT_INJECTION
@@ -1462,6 +1472,31 @@ static inline void f2fs_unlock_all(struct f2fs_sb_info *sbi)
 {
 	up_write(&sbi->cp_rwsem);
 }
+
+static inline void f2fs_read_lock(struct f2fs_sb_info *sbi, nid_t nid) {
+	//printk(KERN_ERR "read_lock -> nid :  %u", nid);
+	//read_lock(&sbi->node_lock[nid]);
+	down_read(&sbi->node_lock[nid]);
+}
+
+static inline void f2fs_write_lock(struct f2fs_sb_info *sbi, nid_t nid) {
+	//printk(KERN_ERR "write_lock -> nid :  %u", nid);
+	//write_lock(&sbi->node_lock[nid]);
+	down_write(&sbi->node_lock[nid]);
+}
+
+static inline void f2fs_read_unlock(struct f2fs_sb_info *sbi, nid_t nid) {
+	//printk(KERN_ERR "read_unlock -> nid :  %u", nid);
+	//read_unlock(&sbi->node_lock[nid]);
+	up_read(&sbi->node_lock[nid]);
+}
+
+static inline void f2fs_write_unlock(struct f2fs_sb_info *sbi, nid_t nid) {
+	//printk(KERN_ERR "write_unlock -> nid :  %u", nid);
+	//write_unlock(&sbi->node_lock[nid]);
+	up_write(&sbi->node_lock[nid]);
+}
+
 
 static inline int __get_cp_reason(struct f2fs_sb_info *sbi)
 {
@@ -1840,6 +1875,31 @@ static inline void f2fs_put_dnode(struct dnode_of_data *dn)
 	dn->inode_page = NULL;
 }
 
+static inline void f2fs_put_dnode_copy(struct f2fs_sb_info *sbi, struct dnode_of_data *dn) {
+	if(dn->node_page == NULL) {
+		printk("node page is NULL");
+		return;
+	}
+
+	if(dn->inode_page == dn->node_page) {
+		f2fs_read_unlock(sbi, dn->nid);
+		dn->node_page = NULL;
+		dn->inode_page = NULL;
+	}
+	else {
+		dn->inode_page = NULL;
+
+                if(atomic_read(&sbi->using_copy[dn->nid]) == 1) 
+			f2fs_read_unlock(sbi, dn->nid);
+		else {
+			printk(KERN_ERR "do not come to this path");
+			//f2fs_put_page(dn->node_page, 1);
+		}
+		dn->node_page = NULL;
+	}
+}
+
+
 static inline struct kmem_cache *f2fs_kmem_cache_create(const char *name,
 					size_t size)
 {
@@ -1880,7 +1940,6 @@ static inline void f2fs_radix_tree_insert(struct radix_tree_root *root,
 static inline bool IS_INODE(struct page *page)
 {
 	struct f2fs_node *p = F2FS_NODE(page);
-
 	return RAW_IS_INODE(p);
 }
 
@@ -1903,9 +1962,8 @@ static inline block_t datablock_addr(struct inode *inode,
 	__le32 *addr_array;
 	int base = 0;
 	bool is_inode = IS_INODE(node_page);
-
 	raw_node = F2FS_NODE(node_page);
-
+	//printk("inode : %p, raw_node : %p, footer.nid : %u, footer.ino : %u", inode, raw_node, raw_node->footer.nid, raw_node->footer.ino);
 	/* from GC path only */
 	if (!inode) {
 		if (is_inode)
@@ -1913,7 +1971,7 @@ static inline block_t datablock_addr(struct inode *inode,
 	} else if (f2fs_has_extra_attr(inode) && is_inode) {
 		base = get_extra_isize(inode);
 	}
-
+	
 	addr_array = blkaddr_in_node(raw_node);
 	return le32_to_cpu(addr_array[base + offset]);
 }
@@ -2492,6 +2550,7 @@ bool need_inode_block_update(struct f2fs_sb_info *sbi, nid_t ino);
 void get_node_info(struct f2fs_sb_info *sbi, nid_t nid, struct node_info *ni);
 pgoff_t get_next_page_offset(struct dnode_of_data *dn, pgoff_t pgofs);
 int get_dnode_of_data(struct dnode_of_data *dn, pgoff_t index, int mode);
+int get_dnode_of_data_cached(struct dnode_of_data *dn, pgoff_t index, int mode);
 int truncate_inode_blocks(struct inode *inode, pgoff_t from);
 int truncate_xattr_node(struct inode *inode, struct page *page);
 int wait_on_node_pages_writeback(struct f2fs_sb_info *sbi, nid_t ino);

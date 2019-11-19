@@ -37,7 +37,7 @@
 #include <linux/uio.h>
 #include <linux/atomic.h>
 #include <linux/prefetch.h>
-
+#include <linux/range_lock.h>
 /*
  * How many user pages to map in one call to get_user_pages().  This determines
  * the size of a structure in the slab cache
@@ -1200,12 +1200,12 @@ do_blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 					iocb->ki_filp->f_mapping;
 
 			/* will be released by direct_io_worker */
-			inode_lock(inode);
+			//inode_lock(inode);
 
 			retval = filemap_write_and_wait_range(mapping, offset,
 							      end - 1);
 			if (retval) {
-				inode_unlock(inode);
+				//inode_unlock(inode);
 				kmem_cache_free(dio_cache, dio);
 				goto out;
 			}
@@ -1216,7 +1216,7 @@ do_blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 	dio->i_size = i_size_read(inode);
 	if (iov_iter_rw(iter) == READ && offset >= dio->i_size) {
 		if (dio->flags & DIO_LOCKING)
-			inode_unlock(inode);
+			//inode_unlock(inode);
 		kmem_cache_free(dio_cache, dio);
 		retval = 0;
 		goto out;
@@ -1354,7 +1354,7 @@ do_blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 	 * of protecting us from looking up uninitialized blocks.
 	 */
 	if (iov_iter_rw(iter) == READ && (dio->flags & DIO_LOCKING))
-		inode_unlock(dio->inode);
+		//inode_unlock(dio->inode);
 
 	/*
 	 * The only time we want to leave bios in flight is when a successful

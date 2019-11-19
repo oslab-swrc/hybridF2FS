@@ -2998,7 +2998,7 @@ ssize_t generic_perform_write(struct file *file,
 		void *fsdata;
 
 		offset = (pos & (PAGE_SIZE - 1));
-		bytes = min_t(unsigned long, PAGE_SIZE - offset,
+		bytes = min_t(unsigned long, PAGE_SIZE - offset, //쓸 바이트 수 계산
 						iov_iter_count(i));
 
 again:
@@ -3022,7 +3022,7 @@ again:
 			break;
 		}
 
-		status = a_ops->write_begin(file, mapping, pos, bytes, flags,
+		status = a_ops->write_begin(file, mapping, pos, bytes, flags, //write_begin을 호출하여 페이지 초기화
 						&page, &fsdata);
 		if (unlikely(status < 0))
 			break;
@@ -3030,10 +3030,11 @@ again:
 		if (mapping_writably_mapped(mapping))
 			flush_dcache_page(page);
 
-		copied = iov_iter_copy_from_user_atomic(page, i, offset, bytes);
-		flush_dcache_page(page);
+		copied = iov_iter_copy_from_user_atomic(page, i, offset, bytes); //처리된 데이터를 페이지에 복사 
+		flush_dcache_page(page); //Page Cache에 page를 쓰는 경우 기존 page에 매핑되어 있는 dcache를 flush
 
-		status = a_ops->write_end(file, mapping, pos, bytes, copied,
+		//Page Cache에 데이터가 쓰여진 후 write_end 호출
+		status = a_ops->write_end(file, mapping, pos, bytes, copied,  //후속 처리
 						page, fsdata);
 		if (unlikely(status < 0))
 			break;
@@ -3059,7 +3060,7 @@ again:
 		written += copied;
 
 		balance_dirty_pages_ratelimited(mapping);
-	} while (iov_iter_count(i));
+	} while (iov_iter_count(i)); //모든 데이터가 다 쓰일 때가지 반복
 
 	return written ? written : status;
 }
@@ -3082,6 +3083,12 @@ EXPORT_SYMBOL(generic_perform_write);
  * A caller has to handle it. This is mainly due to the fact that we want to
  * avoid syncing under i_mutex.
  */
+/*
+	VFS의 write_begin 및 write_end 함수는 데이터가 페이지 캐시에 기록되기 전후의 처리입니다. 
+	페이지 캐시에 기록한 후 시스템은 특정 조건 (예 : fsync 등)이 충족 될 때까지 
+	일정 기간 동안 유지하고 VFS는 writepages 함수를 호출하여 캐시 된 페이지를 한 번에 디스크에 
+	메모리에 기록합니다. write_begin 및 write_end 함수 호출은 VFS의 generic_perform_write 함수에서 실행한다.
+*/
 ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct file *file = iocb->ki_filp;
