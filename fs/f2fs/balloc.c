@@ -25,6 +25,10 @@ int f2fs_alloc_block_free_lists(struct super_block *sb){
 	spin_lock_init(&free_list->s_lock);
 	free_list->index = 0;
 
+	//spin_lock_init(&sbi->nvm_lock);
+	sbi->curr_block=0;
+	sbi->curr_offset=0;
+
 	return 0;
 }
 
@@ -41,12 +45,13 @@ static void f2fs_init_free_list(struct super_block *sb, struct free_list *free_l
 	struct f2fs_sm_info *sm_info = sbi->sm_info;
 	block_t main_blkaddr = sm_info->main_blkaddr;
 
-	per_list_blocks = sbi->pmem_size;
+	per_list_blocks = sbi->pmem_size >> PAGE_SHIFT;
 
 	free_list->block_start = 0;
 	free_list->block_end = per_list_blocks -1;
 
 	free_list->block_start += main_blkaddr; // reserved for metadata
+	sbi->curr_block = main_blkaddr;
 
 	f2fs_msg(sb, KERN_INFO, "f2fs_init_free_list: main_blkaddr = %u", main_blkaddr);
 }
@@ -283,8 +288,6 @@ int f2fs_new_blocks(struct super_block *sb, unsigned long *blocknr, unsigned int
 	unsigned long num_blocks = 0;
 	unsigned long new_blocknr = 0;
 	long ret_blocks = 0;
-	int retried = 0;
-	struct timespec alloc_time;
 
 	num_blocks = 1; //only needs 1 page for node
 
@@ -294,7 +297,7 @@ int f2fs_new_blocks(struct super_block *sb, unsigned long *blocknr, unsigned int
 
 	ret_blocks = f2fs_alloc_blocks_in_free_list(sb, free_list, btype, atype, num_blocks, &new_blocknr, from_tail);
 
-	f2fs_msg(sb, KERN_INFO, "f2fs_new_block: new_blocknr = %x", new_blocknr);
+//	f2fs_msg(sb, KERN_INFO, "f2fs_new_block: new_blocknr = %x", new_blocknr);
 
 	if(ret_blocks > 0){
 		free_list->alloc_data_count++;
@@ -392,9 +395,11 @@ int f2fs_free_blocks(struct super_block *sb, unsigned long blocknr, int num){
 	block_low = blocknr;
 	block_high = blocknr + num_blocks - 1;
 
-	if(blocknr < free_list->block_start || blocknr+num > free_list->block_end +1){
+
+	if(block_low < free_list->block_start || block_high > free_list->block_end){
+//	if(blocknr < free_list->block_start || blocknr+num > free_list->block_end +1){
 		f2fs_msg(sb, KERN_ERR, "free lbocks %lu to %lu, free list %d, start %lu, end %lu",
-				blocknr, blocknr + num -1,
+				block_low, block_high,
 				0, free_list->block_start, free_list->block_end);
 		ret = -EIO;
 		goto out;

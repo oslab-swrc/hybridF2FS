@@ -38,6 +38,17 @@
 /* return value for read_node_page */
 #define LOCKED_PAGE	1
 
+
+/* atomic based lock declaration */
+void nova_segment_write_lock(struct f2fs_inode_info *sih,
+      unsigned long long start, unsigned long long size);
+void nova_segment_write_unlock(struct f2fs_inode_info *sih,
+                unsigned long long start, unsigned long long size);
+void nova_segment_read_lock(struct f2fs_inode_info *sih,
+                unsigned long long start, unsigned long long size);
+void nova_segment_read_unlock(struct f2fs_inode_info *sih,
+                unsigned long long start, unsigned long long size);
+
 /* For flag in struct node_info */
 enum {
 	IS_CHECKPOINTED,	/* is it checkpointed before? */
@@ -55,7 +66,7 @@ struct node_info {
 	block_t	blk_addr;	/* block address of the node */
 	unsigned char version;	/* version of the node */
 	unsigned char flag;	/* for node information bits */
-	unsigned char nvm;
+	unsigned char  nvm;
 };
 
 struct nat_entry {
@@ -82,6 +93,7 @@ static inline void copy_node_info(struct node_info *dst,
 	dst->blk_addr = src->blk_addr;
 	dst->version = src->version;
 	/* should not copy flag here */
+	dst->nvm = src->nvm;
 }
 
 static inline void set_nat_flag(struct nat_entry *ne,

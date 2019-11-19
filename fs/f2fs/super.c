@@ -27,6 +27,8 @@
 #include <linux/sysfs.h>
 #include <linux/quota.h>
 
+#include <linux/range_lock.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -596,7 +598,7 @@ static int parse_options(struct super_block *sb, char *options)
 		case Opt_pmem:
 			name=match_strdup(&args[0]);
 			if(strlen(name)!=0){
-				f2fs_msg(sb, KERN_INFO, "|pmem = %s|%d", name, strlen(name));
+				f2fs_msg(sb, KERN_INFO, "|pmem = %s|%lu", name, strlen(name));
 				strcpy(sbi->pmem_dev, name);
 //				f2fs_msg(sb, KERN_INFO, "|copied  = %s|%d", sbi->pmem_dev, strlen(sbi->pmem_dev));
 				set_opt(sbi, PMEM);
@@ -626,7 +628,8 @@ static int parse_options(struct super_block *sb, char *options)
 static struct inode *f2fs_alloc_inode(struct super_block *sb)
 {
 	struct f2fs_inode_info *fi;
-
+	int i;
+	
 	fi = kmem_cache_alloc(f2fs_inode_cachep, GFP_F2FS_ZERO);
 	if (!fi)
 		return NULL;
@@ -655,6 +658,19 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	/* Will be used by directory only */
 	fi->i_dir_level = F2FS_SB(sb)->dir_level;
 
+        /* Initialize Range Lock Tree */
+        fi->rltree = kmalloc(sizeof(struct range_lock_tree), GFP_KERNEL);
+        range_lock_tree_init(fi->rltree);
+	
+	/* For Preliminary result : optimizing get_dnode_of_data */
+	atomic_set(&fi->vfs_inode.start, 0);
+	atomic_set(&fi->vfs_inode.commit, 0);
+	
+	/* Initialize atomic based lock */
+	fi->segment_rwsem = vmalloc(sizeof(atomic_t) * NUM_NODE); 
+	for(i = 0 ; i < NUM_NODE ; i++) 
+		atomic_set(&fi->segment_rwsem[i], 0);
+	
 	return &fi->vfs_inode;
 }
 
@@ -771,6 +787,9 @@ static void f2fs_i_callback(struct rcu_head *head)
 
 static void f2fs_destroy_inode(struct inode *inode)
 {
+        struct f2fs_inode_info *fi = F2FS_I(inode);
+        kfree(fi->rltree);
+        vfree(fi->segment_rwsem);
 	call_rcu(&inode->i_rcu, f2fs_i_callback);
 }
 
@@ -797,6 +816,10 @@ static void f2fs_put_super(struct super_block *sb)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
 	int i;
+	vfree(sbi->node_copy);
+	vfree(sbi->node_lock);
+	vfree(sbi->using_copy);
+	blkdev_put(sbi->bdev, sbi->sb->s_mode);
 
 	f2fs_quota_off_umount(sb);
 
@@ -2269,11 +2292,9 @@ static int f2fs_get_nvmm_info(struct f2fs_sb_info *sbi){
 	struct block_device *bdev;
 	pfn_t __pfn_t;
 	long size;
-	struct super_block sb;
-	int ret;
 
-//	dax_dev=fs_dax_get_by_host(sbi->pmem_dev);
 	bdev = blkdev_get_by_path(sbi->pmem_dev, sbi->sb->s_mode, sbi->sb->s_type);
+	sbi->bdev = bdev;
 	if(!bdev)
 		f2fs_msg(sbi->sb, KERN_ERR, "Couldn't get blkdev by path");
 
@@ -2426,6 +2447,20 @@ try_onemore:
 	mutex_init(&sbi->cp_mutex);
 	init_rwsem(&sbi->node_write);
 	init_rwsem(&sbi->node_change);
+
+	/* NVM Exclusive Cache code */
+	sbi->node_lock = vmalloc(NUM_NODE * sizeof(struct rw_semaphore));
+	sbi->node_copy = vmalloc(NUM_NODE * PAGE_SIZE);
+	sbi->using_copy = vmalloc(NUM_NODE * sizeof(atomic_t));
+	if(sbi->node_lock == NULL) {
+		printk("allocate rwlock instance failed");
+	}
+	else {
+		for(i = 0 ; i < NUM_NODE ; i++) {
+			init_rwsem(&sbi->node_lock[i]);
+                        atomic_set(&sbi->using_copy[i], 0);
+		}
+	}
 
 	/* disallow all the data/node/meta page writes */
 	set_sbi_flag(sbi, SBI_POR_DOING);

@@ -24,6 +24,9 @@
 #include <linux/uuid.h>
 #include <linux/file.h>
 
+#include <linux/range_lock.h>
+#include <linux/slab.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -354,7 +357,7 @@ static loff_t f2fs_seek_block(struct file *file, loff_t offset, int whence)
 	loff_t data_ofs = offset;
 	loff_t isize;
 	int err = 0;
-
+	//printk(KERN_ERR "f2fs_seek_block start");
 	inode_lock(inode);
 
 	isize = i_size_read(inode);
@@ -568,7 +571,7 @@ int truncate_blocks(struct inode *inode, u64 from, bool lock)
 	int count = 0, err = 0;
 	struct page *ipage;
 	bool truncate_page = false;
-
+	//printk(KERN_ERR"truncate_block start");
 	trace_f2fs_truncate_blocks_enter(inode, from);
 
 	free_from = (pgoff_t)F2FS_BYTES_TO_BLK(from + blocksize - 1);
@@ -841,7 +844,7 @@ static int fill_zero(struct inode *inode, pgoff_t index,
 int truncate_hole(struct inode *inode, pgoff_t pg_start, pgoff_t pg_end)
 {
 	int err;
-
+	//printk(KERN_ERR "truncate hole start");
 	while (pg_start < pg_end) {
 		struct dnode_of_data dn;
 		pgoff_t end_offset, count;
@@ -932,7 +935,7 @@ static int __read_out_blkaddrs(struct inode *inode, block_t *blkaddr,
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct dnode_of_data dn;
 	int ret, done, i;
-
+	//printk(KERN_ERR"__read_out_blkaddrs start");
 next_dnode:
 	set_new_dnode(&dn, inode, NULL, NULL, 0);
 	ret = get_dnode_of_data(&dn, off, LOOKUP_NODE_RA);
@@ -979,7 +982,7 @@ static int __roll_back_blkaddrs(struct inode *inode, block_t *blkaddr,
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct dnode_of_data dn;
 	int ret, i;
-
+	//printk(KERN_ERR"__roll_back_blkaddrs start");
 	for (i = 0; i < len; i++, do_replace++, blkaddr++) {
 		if (*do_replace == 0)
 			continue;
@@ -1004,7 +1007,7 @@ static int __clone_blkaddrs(struct inode *src_inode, struct inode *dst_inode,
 	struct f2fs_sb_info *sbi = F2FS_I_SB(src_inode);
 	pgoff_t i = 0;
 	int ret;
-
+	//printk(KERN_ERR"__clone_blkaddrs start");
 	while (i < len) {
 		if (blkaddr[i] == NULL_ADDR && !full) {
 			i++;
@@ -1240,7 +1243,7 @@ static int f2fs_zero_range(struct inode *inode, loff_t offset, loff_t len,
 	loff_t new_size = i_size_read(inode);
 	loff_t off_start, off_end;
 	int ret = 0;
-
+	//printk(KERN_ERR"f2fs_zero_range start");
 	ret = inode_newsize_ok(inode, (len + offset));
 	if (ret)
 		return ret;
@@ -2680,37 +2683,113 @@ long f2fs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 }
 
+static ssize_t f2fs_file_read_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+	ssize_t ret;
+	//struct range_lock *range_p;
+	//unsigned long range_st, range_ed;
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file_inode(file);
+        struct f2fs_inode_info *fi = F2FS_I(inode);
+        //struct range_lock_tree *rltree = fi->rltree;
+
+	unsigned long long start_seg, end_seg;
+	//range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+	//range_st = (unsigned long)(iocb->ki_pos >> 12);
+        //range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(from) - 1) >> 12);
+        //range_lock_init(range_p, range_st, range_ed);
+	//range_read_lock(rltree, range_p);
+	
+	start_seg = (unsigned long long)(iocb->ki_pos) >> 12;
+	end_seg = (unsigned long long)(iocb->ki_pos + iov_iter_count(from) - 1) >> 12;	
+	nova_segment_read_lock(fi, start_seg, end_seg - start_seg + 1);
+	
+	ret = generic_file_read_iter(iocb, from);
+
+	nova_segment_read_unlock(fi, start_seg, end_seg - start_seg + 1);
+
+	//range_read_unlock(rltree, range_p);
+	//kfree(range_p);
+	return ret;
+
+}
+
+/*
+	F2FS Write Path 요약(bufferedIO 기준) 
+	1. vfs_write
+	2. f2fs_file_write_iter : f2fs_node의 정보 초기화
+	3. f2fs_write_begin : page cache 생성 및 쓸 데이터 채우기
+	4. Page Cache에 쓰기 : 시스템이 페이지를 writeback으로 설정
+	5. f2fs_write_end : Page를 최신 상태로 설정
+	6. f2fs_write_data_pages : writeback or fsync가 트리거 될 때 디스크에 쓰기
+
+	f2fs_file_write_iter 동작 과정
+	파일에 데이터를 쓰기전에 데이터를 전처리 하는 것이 목표 
+	f2fs_inode(or direct node)의 쓰기 위치에 해당 하는 i_addr(or addr)값에 해당하는 data block을 초기화 한다.
+	예를 들어, user가 f2fs_inode의 네번째 페이지의 위치에 데이터를 써야하는 경우 f2fs_inode->i_addr[3]에 해당하는
+	데이터 블록 주소를 찾는다. 이 위치의 값이 NULL_ADDR이면 Append Write이므로 값은 NEW_ADDR로 초기화되고 
+	위치 값이 이미 값이 존재하는 블록이면 Overwrite를 수행 
+*/
 static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
+        struct f2fs_inode_info *fi = F2FS_I(inode);
+        struct range_lock_tree *rltree = fi->rltree;
 	struct blk_plug plug;
 	ssize_t ret;
+        // Range Lock
+        struct range_lock *range_p;
+        unsigned long range_st, range_ed;
+	unsigned long long start_seg, end_seg;
+        range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+        range_st = (unsigned long)(iocb->ki_pos >> 12);
+        range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(from) - 1) >> 12);
+        range_lock_init(range_p, range_st, range_ed);
 
-	inode_lock(inode);
-	ret = generic_write_checks(iocb, from);
+        // get range lock instead of inode_lock
+        // inode_lock(inode);
+        //range_write_lock(rltree, range_p);
+	start_seg = (unsigned long long)(iocb->ki_pos) >> 12;
+	end_seg = (unsigned long long)(iocb->ki_pos + iov_iter_count(from) - 1) >> 12;	
+	nova_segment_write_lock(fi, start_seg, end_seg - start_seg + 1);
+
+	trace_f2fs_range_lock_begin(inode, range_p->holds, iocb->ki_pos, iov_iter_count(from), range_st, range_ed);
+	
+        ret = generic_write_checks(iocb, from);
+        
 	if (ret > 0) {
 		int err;
-
 		if (iov_iter_fault_in_readable(from, iov_iter_count(from)))
 			set_inode_flag(inode, FI_NO_PREALLOC);
 
-		err = f2fs_preallocate_blocks(iocb, from);
+		err = f2fs_preallocate_blocks(iocb, from); //전처리
 		if (err) {
 			clear_inode_flag(inode, FI_NO_PREALLOC);
-			inode_unlock(inode);
+	                trace_f2fs_range_lock_end(inode, iocb->ki_pos, iov_iter_count(from), range_st, range_ed);
+                        // unlock range lock instead of inode_lock
+                        //inode_unlock(inode);
+                        //range_write_unlock(rltree, range_p);
+			nova_segment_write_unlock(fi, start_seg, end_seg - start_seg + 1);
+                        kfree(range_p); // free range lock
 			return err;
 		}
 		blk_start_plug(&plug);
-		ret = __generic_file_write_iter(iocb, from);
+		ret = __generic_file_write_iter(iocb, from); //실제 쓰는 함수 
 		blk_finish_plug(&plug);
 		clear_inode_flag(inode, FI_NO_PREALLOC);
 
 		if (ret > 0)
 			f2fs_update_iostat(F2FS_I_SB(inode), APP_WRITE_IO, ret);
 	}
-	inode_unlock(inode);
 
+	trace_f2fs_range_lock_end(inode, iocb->ki_pos, iov_iter_count(from), range_st, range_ed);
+        // unlock range lock instead of inode_lock
+        // inode_unlock(inode);
+        //range_write_unlock(rltree, range_p);
+	nova_segment_write_unlock(fi, start_seg, end_seg - start_seg + 1);
+        
+        kfree(range_p); // free range lock
 	if (ret > 0)
 		ret = generic_write_sync(iocb, ret);
 	return ret;
@@ -2757,7 +2836,7 @@ long f2fs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 const struct file_operations f2fs_file_operations = {
 	.llseek		= f2fs_llseek,
-	.read_iter	= generic_file_read_iter,
+	.read_iter	= f2fs_file_read_iter,
 	.write_iter	= f2fs_file_write_iter,
 	.open		= f2fs_file_open,
 	.release	= f2fs_release_file,
