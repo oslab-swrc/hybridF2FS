@@ -43,3 +43,8 @@ TODO
 We have to allocate nvm area sequentially to log.
 
 We will move to resolving scalability issues.
+
+RESOURCES
+----
+Write optimization of log-structured flash file system for parallel I/O on manycore servers, SYSTOR 2019
+https://dl.acm.org/doi/10.1145/3319647.3325828
