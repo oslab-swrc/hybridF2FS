@@ -571,6 +571,15 @@ do {								\
 	lock_acquired(&(_lock)->dep_map, _RET_IP_);			\
 } while (0)
 
+#define RANGE_LOCK_CONTENDED(tree, _lock, try, lock)		\
+do {								\
+	if (!try(tree, _lock)) {				\
+		lock_contended(&(tree)->dep_map, _RET_IP_);	\
+		lock(tree, _lock);				\
+	}							\
+	lock_acquired(&(tree)->dep_map, _RET_IP_);		\
+} while (0)
+
 #define LOCK_CONTENDED_RETURN(_lock, try, lock)			\
 ({								\
 	int ____err = 0;					\
@@ -583,6 +592,18 @@ do {								\
 	____err;						\
 })
 
+#define RANGE_LOCK_CONTENDED_RETURN(tree, _lock, try, lock)	\
+({								\
+	int ____err = 0;					\
+	if (!try(tree, _lock)) {				\
+		lock_contended(&(tree)->dep_map, _RET_IP_);	\
+		____err = lock(tree, _lock);			\
+	}							\
+	if (!____err)						\
+		lock_acquired(&(tree)->dep_map, _RET_IP_);	\
+	____err;						\
+})
+
 #else /* CONFIG_LOCK_STAT */
 
 #define lock_contended(lockdep_map, ip) do {} while (0)
@@ -591,8 +612,14 @@ do {								\
 #define LOCK_CONTENDED(_lock, try, lock) \
 	lock(_lock)
 
+#define RANGE_LOCK_CONTENDED(tree, _lock, try, lock) \
+	lock(tree, _lock)
+
 #define LOCK_CONTENDED_RETURN(_lock, try, lock) \
 	lock(_lock)
+
+#define RANGE_LOCK_CONTENDED_RETURN(tree, _lock, try, lock) \
+	lock(tree, _lock)
 
 #endif /* CONFIG_LOCK_STAT */
 
@@ -657,6 +684,11 @@ static inline void print_irqtrace_events(struct task_struct *curr)
 #define rwsem_acquire_nest(l, s, t, n, i)	lock_acquire_exclusive(l, s, t, n, i)
 #define rwsem_acquire_read(l, s, t, i)		lock_acquire_shared(l, s, t, NULL, i)
 #define rwsem_release(l, i)			lock_release(l, i)
+
+#define range_lock_acquire(l, s, t, i)		lock_acquire_exclusive(l, s, t, NULL, i)
+#define range_lock_acquire_nest(l, s, t, n, i)	lock_acquire_exclusive(l, s, t, n, i)
+#define range_lock_acquire_read(l, s, t, i)	lock_acquire_shared(l, s, t, NULL, i)
+#define range_lock_release(l, n, i)		lock_release(l, n, i)
 
 #define lock_map_acquire(l)			lock_acquire_exclusive(l, 0, 0, NULL, _THIS_IP_)
 #define lock_map_acquire_read(l)		lock_acquire_shared_recursive(l, 0, 0, NULL, _THIS_IP_)
