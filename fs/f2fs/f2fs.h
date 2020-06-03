@@ -23,6 +23,7 @@
 #include <linux/blkdev.h>
 #include <linux/quotaops.h>
 #include <linux/part_stat.h>
+#include <linux/range_lock.h>
 #include <crypto/hash.h>
 
 #include <linux/fscrypt.h>
@@ -770,7 +771,10 @@ struct f2fs_inode_info {
 	unsigned char i_compress_algorithm;	/* algorithm type */
 	unsigned char i_log_cluster_size;	/* log of cluster size */
 	unsigned int i_cluster_size;		/* cluster size */
+	struct range_lock_tree *rltree; /* pointer for range lock tree */
 };
+
+extern void range_lock_init(struct range_lock *lock, unsigned long start, unsigned long last);
 
 static inline void get_extent_info(struct extent_info *ext,
 					struct f2fs_extent *i_ext)
