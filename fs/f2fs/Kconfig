@@ -3,6 +3,7 @@ config F2FS_FS
 	depends on BLOCK
 	select CRYPTO
 	select CRYPTO_CRC32
+	select INTERVAL_TREE
 	help
 	  F2FS is based on Log-structured File System (LFS), which supports
 	  versatile "flash-friendly" features. The design has been focused on

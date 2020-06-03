@@ -23,6 +23,7 @@
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/quotaops.h>
+#include <linux/range_lock.h>
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
 #include <linux/fscrypt_supp.h>
 #else
@@ -593,7 +594,10 @@ struct f2fs_inode_info {
 
 	int i_extra_isize;		/* size of extra space located in i_addr */
 	kprojid_t i_projid;		/* id for project quota */
+	struct range_lock_tree *rltree; /* pointer for range lock tree */
 };
+
+extern void range_lock_init(struct range_lock *lock, unsigned long start, unsigned long last);
 
 static inline void get_extent_info(struct extent_info *ext,
 					struct f2fs_extent *i_ext)

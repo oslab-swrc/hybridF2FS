@@ -24,6 +24,9 @@
 #include <linux/uuid.h>
 #include <linux/file.h>
 
+#include <linux/range_lock.h>
+#include <linux/slab.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -2678,10 +2681,23 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
+	struct f2fs_inode_info *fi = F2FS_I(inode);
+	struct range_lock_tree *rltree = fi->rltree;
 	struct blk_plug plug;
 	ssize_t ret;
+	// Range Lock
+	struct range_lock *range_p;
+	unsigned long range_st, range_ed;
 
-	inode_lock(inode);
+	range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+	range_st = (unsigned long)(iocb->ki_pos >> 12);
+	range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(from) - 1) >> 12);
+	range_lock_init(range_p, range_st, range_ed);
+
+	// get range lock instead of inode_lock
+	// inode_lock(inode);
+	range_write_lock(rltree, range_p);
+
 	ret = generic_write_checks(iocb, from);
 	if (ret > 0) {
 		int err;
@@ -2691,7 +2707,11 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 		err = f2fs_preallocate_blocks(iocb, from);
 		if (err) {
-			inode_unlock(inode);
+			clear_inode_flag(inode, FI_NO_PREALLOC);
+			// unlock range lock instead of inode_lock
+			//inode_unlock(inode);
+			range_write_unlock(rltree, range_p);
+			kfree(range_p); // free range lock
 			return err;
 		}
 		blk_start_plug(&plug);
@@ -2702,8 +2722,12 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		if (ret > 0)
 			f2fs_update_iostat(F2FS_I_SB(inode), APP_WRITE_IO, ret);
 	}
-	inode_unlock(inode);
 
+	// unlock range lock instead of inode_lock
+	// inode_unlock(inode);
+	range_write_unlock(rltree, range_p);
+
+	kfree(range_p); // free range lock
 	if (ret > 0)
 		ret = generic_write_sync(iocb, ret);
 	return ret;
