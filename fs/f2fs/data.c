@@ -24,6 +24,9 @@
 #include <linux/cleancache.h>
 #include <linux/sched/signal.h>
 
+#include <linux/range_lock.h>
+#include <linux/slab.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -2072,6 +2075,10 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	loff_t offset = iocb->ki_pos;
 	int rw = iov_iter_rw(iter);
 	int err;
+	struct f2fs_inode_info *fi = F2FS_I(inode);
+	struct range_lock *range_p;
+	struct range_lock_tree *rltree = fi->rltree;
+	unsigned long range_st, range_ed;
 
 	err = check_direct_IO(inode, iter, offset);
 	if (err)
@@ -2082,9 +2089,32 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 
 	trace_f2fs_direct_IO_enter(inode, offset, count, rw);
 
+	/* Get range lock for read */
+	if (rw == READ) {
+		inode_lock_shared(inode);
+		range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+		range_st = (unsigned long)(iocb->ki_pos >> 12);
+		range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(iter) - 1) >> 12);
+		range_lock_init(range_p, range_st, range_ed);
+		range_read_lock(rltree, range_p);
+	}
+
 	down_read(&F2FS_I(inode)->dio_rwsem[rw]);
-	err = blockdev_direct_IO(iocb, inode, iter, get_data_block_dio);
+	/* blockdev_direct_IO adds DIO_LOCKING which make do_blockdev_direct_IO
+	 * to use inode mutex. Call inner function without DIO_LOCKING to handle
+	 * direct io read using range lock.
+	 */
+	// err = blockdev_direct_IO(iocb, inode, iter, get_data_block_dio);
+	err = __blockdev_direct_IO(iocb, inode, inode->i_sb->s_bdev, iter,
+			get_data_block_dio, NULL, NULL, DIO_SKIP_HOLES);
 	up_read(&F2FS_I(inode)->dio_rwsem[rw]);
+
+	/* Release range lock for read */
+	if (rw == READ) {
+		range_read_unlock(rltree, range_p);
+		kfree(range_p);
+		inode_unlock_shared(inode);
+	}
 
 	if (rw == WRITE) {
 		if (err > 0) {

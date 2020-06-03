@@ -2695,7 +2695,7 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	range_lock_init(range_p, range_st, range_ed);
 
 	// get range lock instead of inode_lock
-	// inode_lock(inode);
+	inode_lock_shared(inode);
 	range_write_lock(rltree, range_p);
 
 	ret = generic_write_checks(iocb, from);
@@ -2709,9 +2709,9 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		if (err) {
 			clear_inode_flag(inode, FI_NO_PREALLOC);
 			// unlock range lock instead of inode_lock
-			//inode_unlock(inode);
 			range_write_unlock(rltree, range_p);
-			kfree(range_p); // free range lock
+			kfree(range_p);
+			inode_unlock_shared(inode);
 			return err;
 		}
 		blk_start_plug(&plug);
@@ -2724,10 +2724,9 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	}
 
 	// unlock range lock instead of inode_lock
-	// inode_unlock(inode);
 	range_write_unlock(rltree, range_p);
-
 	kfree(range_p); // free range lock
+	inode_unlock_shared(inode);
 	if (ret > 0)
 		ret = generic_write_sync(iocb, ret);
 	return ret;
