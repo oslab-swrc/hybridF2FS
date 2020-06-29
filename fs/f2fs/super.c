@@ -954,6 +954,7 @@ static int parse_options(struct super_block *sb, char *options)
 static struct inode *f2fs_alloc_inode(struct super_block *sb)
 {
 	struct f2fs_inode_info *fi;
+	int i;
 
 	fi = kmem_cache_alloc(f2fs_inode_cachep, GFP_F2FS_ZERO);
 	if (!fi)
@@ -981,6 +982,13 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	/* Initialize Range Lock Tree */
 	fi->rltree = kmalloc(sizeof(struct range_lock_tree), GFP_KERNEL);
 	range_lock_tree_init(fi->rltree);
+
+	/* Initialize atomic operation-based range lock */
+	fi->rlatomic = vmalloc(sizeof(atomic_t) * 50000000);
+	for (i = 0; i < 50000000; i++) {
+		atomic_set(&fi->rlatomic[i], 0);
+	}
+
 	return &fi->vfs_inode;
 }
 
@@ -1110,6 +1118,9 @@ static void f2fs_dirty_inode(struct inode *inode, int flags)
 
 static void f2fs_free_inode(struct inode *inode)
 {
+    struct f2fs_inode_info *fi = F2FS_I(inode);
+    kfree(fi->rltree);
+    vfree(fi->rlatomic);
 	fscrypt_free_inode(inode);
 	kmem_cache_free(f2fs_inode_cachep, F2FS_I(inode));
 }

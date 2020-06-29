@@ -3479,3 +3479,61 @@ void f2fs_destroy_node_manager_caches(void)
 	kmem_cache_destroy(free_nid_slab);
 	kmem_cache_destroy(nat_entry_slab);
 }
+
+void atomic_range_write_lock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last)
+{
+	atomic_t* rlatomic = fi->rlatomic;
+	int i, res;
+	for (i = start; i <= last; i++) {
+		while(1) {
+			smp_mb__before_atomic();
+			res = atomic_cmpxchg(&rlatomic[i], 0, (1u << 31));
+			smp_mb__after_atomic();
+			if (res == 0)
+				break;
+		}
+	}
+}
+
+void atomic_range_write_unlock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last)
+{
+	atomic_t* rlatomic = fi->rlatomic;
+	int i, res;
+	for (i = start; i <= last; i++) {
+		while(1) {
+			smp_mb__before_atomic();
+			res = atomic_cmpxchg(&rlatomic[i], (1u << 31), 0);
+			smp_mb__after_atomic();
+			if (res == (1u << 31))
+				break;
+		}
+	}
+}
+
+void atomic_range_read_lock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last)
+{
+	atomic_t* rlatomic = fi->rlatomic;
+	int i, res;
+	for (i = start; i <= last; i++) {
+		while(1) {
+			smp_mb__before_atomic();
+			res = atomic_add_unless(&rlatomic[i], 1, (1u << 31));
+			smp_mb__after_atomic();
+			if (res != 0)
+				break;
+		}
+	}
+}
+
+void atomic_range_read_unlock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last)
+{
+	atomic_t* rlatomic = fi->rlatomic;
+	int i;
+	for (i = start; i <= last; i++) {
+		while(1) {
+			smp_mb__before_atomic();
+			atomic_dec(&rlatomic[i]);
+			smp_mb__after_atomic();
+		}
+	}
+}

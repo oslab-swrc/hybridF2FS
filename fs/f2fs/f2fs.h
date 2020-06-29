@@ -777,6 +777,7 @@ struct f2fs_inode_info {
 	unsigned char i_log_cluster_size;	/* log of cluster size */
 	unsigned int i_cluster_size;		/* cluster size */
 	struct range_lock_tree *rltree; /* pointer for range lock tree */
+	atomic_t *rlatomic; /* atomic variable for atomic operation-based range lock */
 };
 
 extern void range_lock_init(struct range_lock *lock, unsigned long start, unsigned long last);
