@@ -600,6 +600,7 @@ struct f2fs_inode_info {
 	int i_extra_isize;		/* size of extra space located in i_addr */
 	kprojid_t i_projid;		/* id for project quota */
 	struct range_lock_tree *rltree; /* pointer for range lock tree */
+	atomic_t *rlatomic; /* atomic variable for atomic operation-based range lock */
 };
 
 extern void range_lock_init(struct range_lock *lock, unsigned long start, unsigned long last);
