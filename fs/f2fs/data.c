@@ -2113,8 +2113,8 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	int rw = iov_iter_rw(iter);
 	int err;
 	struct f2fs_inode_info *fi = F2FS_I(inode);
-	struct range_lock *range_p;
-	struct range_lock_tree *rltree = fi->rltree;
+	// struct range_lock *range_p;
+	// struct range_lock_tree *rltree = fi->rltree;
 	unsigned long range_st, range_ed;
 
 	err = check_direct_IO(inode, iter, offset);
@@ -2129,11 +2129,12 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	/* Get range lock for read */
 	if (rw == READ) {
 		inode_lock_shared(inode);
-		range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+		// range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
 		range_st = (unsigned long)(iocb->ki_pos >> 12);
 		range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(iter) - 1) >> 12);
-		range_lock_init(range_p, range_st, range_ed);
-		range_read_lock(rltree, range_p);
+		// range_lock_init(range_p, range_st, range_ed);
+		// range_read_lock(rltree, range_p);
+		atomic_range_read_lock(fi, range_st, range_ed);
 	}
 
 	down_read(&F2FS_I(inode)->dio_rwsem[rw]);
@@ -2148,8 +2149,9 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 
 	/* Release range lock for read */
 	if (rw == READ) {
-		range_read_unlock(rltree, range_p);
-		kfree(range_p);
+		// range_read_unlock(rltree, range_p);
+		// kfree(range_p);
+		atomic_range_read_unlock(fi, range_st, range_ed);
 		inode_unlock_shared(inode);
 	}
 
