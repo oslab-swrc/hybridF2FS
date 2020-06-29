@@ -980,8 +980,8 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	fi->i_dir_level = F2FS_SB(sb)->dir_level;
 
 	/* Initialize Range Lock Tree */
-	fi->rltree = kmalloc(sizeof(struct range_lock_tree), GFP_KERNEL);
-	range_lock_tree_init(fi->rltree);
+	// fi->rltree = kmalloc(sizeof(struct range_lock_tree), GFP_KERNEL);
+	// range_lock_tree_init(fi->rltree);
 
 	/* Initialize atomic operation-based range lock */
 	fi->rlatomic = vmalloc(sizeof(atomic_t) * 50000000);
@@ -1119,12 +1119,11 @@ static void f2fs_dirty_inode(struct inode *inode, int flags)
 static void f2fs_free_inode(struct inode *inode)
 {
     struct f2fs_inode_info *fi = F2FS_I(inode);
-    kfree(fi->rltree);
+//    kfree(fi->rltree);
     vfree(fi->rlatomic);
 	fscrypt_free_inode(inode);
 	kmem_cache_free(f2fs_inode_cachep, F2FS_I(inode));
 }
-
 static void destroy_percpu_info(struct f2fs_sb_info *sbi)
 {
 	percpu_counter_destroy(&sbi->alloc_valid_block_count);

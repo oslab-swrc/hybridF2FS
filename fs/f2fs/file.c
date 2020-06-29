@@ -3525,10 +3525,11 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
 	struct f2fs_inode_info *fi = F2FS_I(inode);
-	struct range_lock_tree *rltree = fi->rltree;
+	// struct range_lock_tree *rltree = fi->rltree;
+	struct blk_plug plug;
 	ssize_t ret;
 	// Range Lock
-	struct range_lock *range_p;
+	// struct range_lock *range_p;
 	unsigned long range_st, range_ed;
 
 	if (unlikely(f2fs_cp_error(F2FS_I_SB(inode)))) {
@@ -3552,14 +3553,15 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		inode_lock_shared(inode);
 	}
 
-	range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+	//range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
 	range_st = (unsigned long)(iocb->ki_pos >> 12);
 	range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(from) - 1) >> 12);
-	range_lock_init(range_p, range_st, range_ed);
+	// range_lock_init(range_p, range_st, range_ed);
 
 	// get range lock instead of inode_lock
-	// inode_lock_shared(inode); // covered in if statement above
-	range_write_lock(rltree, range_p);
+	inode_lock_shared(inode);
+	// range_write_lock(rltree, range_p);
+	atomic_range_write_lock(fi, range_st, range_ed);
 
 	ret = generic_write_checks(iocb, from);
 	if (ret > 0) {
@@ -3613,8 +3615,9 @@ out_err:
 			clear_inode_flag(inode, FI_NO_PREALLOC);
 			// inode_unlock(inode);
 			// unlock range lock instead of inode_lock
-			range_write_unlock(rltree, range_p);
-			kfree(range_p);
+			// range_write_unlock(rltree, range_p);
+			// kfree(range_p);
+			atomic_range_write_unlock(fi, range_st, range_ed);
 			inode_unlock_shared(inode);
 			ret = err;
 			goto out;
@@ -3631,8 +3634,9 @@ write:
 			f2fs_update_iostat(F2FS_I_SB(inode), APP_WRITE_IO, ret);
 	}
 	// unlock range lock instead of inode_lock
-	range_write_unlock(rltree, range_p);
-	kfree(range_p); // free range lock
+	// range_write_unlock(rltree, range_p);
+	// kfree(range_p); // free range lock
+	atomic_range_write_unlock(fi, range_st, range_ed);
 	inode_unlock_shared(inode);
 out:
 	trace_f2fs_file_write_iter(inode, iocb->ki_pos,
