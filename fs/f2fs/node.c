@@ -823,6 +823,147 @@ release_out:
 	return err;
 }
 
+/*
+ * protect node page with rwlock.
+ * success: nid_read_lock on node_page, node_page is not locked page
+ */
+int f2fs_get_dnode_of_data_shared(struct dnode_of_data *dn, pgoff_t index, int mode)
+{
+	struct f2fs_sb_info *sbi = F2FS_I_SB(dn->inode);
+	struct page *npage[4];
+	struct page *parent = NULL;
+	int offset[4];
+	unsigned int noffset[4];
+	nid_t nids[4];
+	int level, i = 0;
+	int err = 0;
+
+	level = get_node_path(dn->inode, index, offset, noffset);
+	if (level < 0)
+		return level;
+
+	nids[0] = dn->inode->i_ino;
+	npage[0] = dn->inode_page; // assert (dn->inode_page == NULL)
+
+	if (!npage[0]) {
+		npage[0] = f2fs_get_node_page_shared(sbi, nids[0]);
+		if (IS_ERR(npage[0]))
+			return PTR_ERR(npage[0]);
+	}
+
+	/* if inline_data is set, should not report any block indices */
+	if (f2fs_has_inline_data(dn->inode) && index) {
+		err = -ENOENT;
+                f2fs_nid_read_unlock(sbi, nids[0]);
+		f2fs_put_page(npage[0], 0);
+		goto release_out;
+	}
+
+	parent = npage[0];
+	if (level != 0)
+		nids[1] = get_nid(parent, offset[0], true);
+	dn->inode_page = npage[0];
+	dn->inode_page_locked = false;
+
+	/* get indirect or direct nodes */
+	for (i = 1; i <= level; i++) {
+		bool done = false;
+
+		if (!nids[i] && mode == ALLOC_NODE) {
+                        f2fs_nid_read_unlock(sbi, nids[i-1]);
+                        f2fs_nid_write_lock(sbi, nids[i-1]);
+			lock_page(parent);
+                        /* double check */
+                        nids[i] = get_nid(parent, offset[i-1], ((i-1)==0));
+                        if (nids[i]) {
+                            npage[i] = f2fs_get_node_page_shared(sbi, nids[i]);
+                            if (IS_ERR(npage[i])) {
+                                err = PTR_ERR(npage[i]);
+                                unlock_page(parent);
+                                f2fs_nid_downgrade_write(sbi, nids[i-1]);
+                                goto release_pages;
+                            }
+                        } else {
+			    /* alloc new node */
+			    if (!f2fs_alloc_nid(sbi, &(nids[i]))) {
+				err = -ENOSPC;
+                                unlock_page(parent);
+                                f2fs_nid_downgrade_write(sbi, nids[i-1]);
+				goto release_pages;
+			    }
+
+                            f2fs_nid_write_lock(sbi, nids[i]);
+			    dn->nid = nids[i];
+			    npage[i] = f2fs_new_node_page(dn, noffset[i]);
+			    if (IS_ERR(npage[i])) {
+                                f2fs_nid_write_unlock(sbi, nids[i]);
+				f2fs_alloc_nid_failed(sbi, nids[i]);
+				err = PTR_ERR(npage[i]);
+                                unlock_page(parent);
+                                f2fs_nid_downgrade_write(sbi, nids[i-1]);
+				goto release_pages;
+			    }
+
+                            set_nid(parent, offset[i - 1], nids[i], i == 1);
+                            f2fs_alloc_nid_done(sbi, nids[i]);
+                            unlock_page(npage[i]);
+                            f2fs_nid_downgrade_write(sbi, nids[i]);
+                        }
+                        unlock_page(parent);
+                        f2fs_nid_downgrade_write(sbi,nids[i-1]);
+			done = true;
+		} else if (mode == LOOKUP_NODE_RA && i == level && level > 1) {
+			npage[i] = f2fs_get_node_page_ra_shared(parent, offset[i - 1]);
+			if (IS_ERR(npage[i])) {
+				err = PTR_ERR(npage[i]);
+				goto release_pages;
+			}
+			done = true;
+		}
+
+		if (i == 1) {
+                        f2fs_nid_read_unlock(sbi, nids[i-1]);
+		} else {
+                        f2fs_nid_read_unlock(sbi, nids[i-1]);
+			f2fs_put_page(parent, 0);
+		}
+
+		if (!done) {
+			npage[i] = f2fs_get_node_page_shared(sbi, nids[i]);
+			if (IS_ERR(npage[i])) {
+				err = PTR_ERR(npage[i]);
+				f2fs_put_page(npage[0], 0);
+				goto release_out;
+			}
+		}
+		if (i < level) {
+			parent = npage[i];
+			nids[i + 1] = get_nid(parent, offset[i], false);
+		}
+	}
+	dn->nid = nids[level];
+	dn->ofs_in_node = offset[level];
+	dn->node_page = npage[level];
+	dn->data_blkaddr = data_blkaddr(dn->inode,
+				dn->node_page, dn->ofs_in_node);
+	return 0;
+
+release_pages:
+        f2fs_nid_read_unlock(sbi, nids[i-1]);
+	f2fs_put_page(parent, 0);
+	if (i > 1)
+		f2fs_put_page(npage[0], 0);
+release_out:
+	dn->inode_page = NULL;
+	dn->node_page = NULL;
+	if (err == -ENOENT) {
+		dn->cur_level = i;
+		dn->max_level = level;
+		dn->ofs_in_node = offset[level];
+	}
+	return err;
+}
+
 static int truncate_node(struct dnode_of_data *dn)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dn->inode);
@@ -1386,17 +1527,127 @@ out_err:
 	return page;
 }
 
+// success : no lock on page, read lock on nid.
+// fail : no lock on nid.
+static struct page *__get_node_page_shared(struct f2fs_sb_info *sbi, pgoff_t nid,
+					struct page *parent, int start)
+{
+    // ASSERT(parent == NULL)
+    // ASSERT(start == 0)
+	struct page *page;
+	int err;
+
+	if (!nid)
+		return ERR_PTR(-ENOENT);
+	f2fs_bug_on(sbi, f2fs_check_nid_range(sbi, nid));
+repeat: // no lock on nid.
+
+        // page = f2fs_grab_cache_page(NODE_MAPPING(sbi), nid, false);
+        // return grab_cache_page(NODE_MAPPING(sbi), nid);
+        // return find_or_create_page(NODE_MAPPING(sbi), nid, mapping_gfp_mask(NODE_MAPPING(sbi)));
+	page = pagecache_get_page(NODE_MAPPING(sbi), nid,
+					FGP_ACCESSED,
+					mapping_gfp_mask(NODE_MAPPING(sbi)));
+        if (page) {
+            if (PageUptodate(page)) {
+                // page hit, uptodate. (read lock case)
+                f2fs_nid_read_lock(sbi, nid);
+		goto page_hit; //(?)
+            } else {
+                // page hit, need to read. (write lock case)
+                // after read node page, downgrade to read lock.
+                f2fs_nid_write_lock(sbi, nid);
+                lock_page(page);
+                goto fill_page;
+            }
+        } else {
+            // page miss, need to create & read (write lock case)
+            f2fs_nid_write_lock(sbi, nid);
+	    page = f2fs_grab_cache_page(NODE_MAPPING(sbi), nid, false);
+	    if (!page) {
+                f2fs_nid_write_unlock(sbi, nid);
+		return ERR_PTR(-ENOMEM);
+            }
+        }
+        //
+
+fill_page: // always starts with nid_write_lock. + locked page
+	err = read_node_page(page, 0);
+	if (err < 0) {
+		f2fs_put_page(page, 1);
+                f2fs_nid_write_unlock(sbi, nid);
+		return ERR_PTR(err);
+	} else if (err == LOCKED_PAGE) {
+                unlock_page(page);
+                f2fs_nid_downgrade_write(sbi, nid);
+		err = 0;
+		goto page_hit;
+	}
+
+	if (parent)
+		f2fs_ra_node_pages(parent, start + 1, MAX_RA_NODE);
+	
+        lock_page(page);
+
+	if (unlikely(page->mapping != NODE_MAPPING(sbi))) {
+		f2fs_put_page(page, 1);
+                f2fs_nid_write_unlock(sbi, nid);
+		goto repeat;
+	}
+
+	if (unlikely(!PageUptodate(page))) {
+		err = -EIO;
+		goto out_err;
+	}
+
+	if (!f2fs_inode_chksum_verify(sbi, page)) {
+		err = -EBADMSG;
+		goto out_err;
+	}
+
+        unlock_page(page);
+        f2fs_nid_downgrade_write(sbi, nid);
+page_hit:
+	if(unlikely(nid != nid_of_node(page))) {
+		f2fs_err(sbi, KERN_WARNING, "inconsistent node block, "
+			"nid:%lu, node_footer[nid:%u,ino:%u,ofs:%u,cpver:%llu,blkaddr:%u]",nid, nid_of_node(page), ino_of_node(page),ofs_of_node(page), cpver_of_node(page),next_blkaddr_of_node(page));
+		err = -EINVAL;
+                ClearPageUptodate(page);
+                f2fs_put_page(page, 0);
+                f2fs_nid_read_unlock(sbi, nid);
+                return ERR_PTR(err);
+out_err:
+		ClearPageUptodate(page);
+		f2fs_put_page(page, 1);
+                f2fs_nid_write_unlock(sbi, nid);
+		return ERR_PTR(err);
+	}
+	return page;
+}
+
 struct page *f2fs_get_node_page(struct f2fs_sb_info *sbi, pgoff_t nid)
 {
 	return __get_node_page(sbi, nid, NULL, 0);
 }
 
+struct page *f2fs_get_node_page_shared(struct f2fs_sb_info *sbi, pgoff_t nid)
+{
+	return __get_node_page_shared(sbi, nid, NULL, 0);
+}
 struct page *f2fs_get_node_page_ra(struct page *parent, int start)
 {
 	struct f2fs_sb_info *sbi = F2FS_P_SB(parent);
 	nid_t nid = get_nid(parent, start, false);
 
 	return __get_node_page(sbi, nid, parent, start);
+}
+
+struct page *f2fs_get_node_page_ra_shared(struct page *parent, int start)
+{
+	struct f2fs_sb_info *sbi = F2FS_P_SB(parent);
+	nid_t nid = get_nid(parent, start, false);
+
+	return __get_node_page_shared(sbi, nid, parent, start);
 }
 
 static void flush_inline_data(struct f2fs_sb_info *sbi, nid_t ino)
