@@ -154,6 +154,11 @@ enum {
 #define DEF_CP_INTERVAL			60	/* 60 secs */
 #define DEF_IDLE_INTERVAL		5	/* 5 secs */
 
+/*
+ * For nid rw lock
+ */
+#define MAX_NID_RWLOCK 10000000
+
 struct cp_control {
 	int reason;
 	__u64 trim_start;
@@ -1142,6 +1147,7 @@ struct f2fs_sb_info {
 	char *s_qf_names[MAXQUOTAS];
 	int s_jquota_fmt;			/* Format of quota to use */
 #endif
+	struct rw_semaphore *nid_rwlock;
 };
 
 #ifdef CONFIG_F2FS_FAULT_INJECTION
@@ -1450,6 +1456,31 @@ static inline void f2fs_lock_all(struct f2fs_sb_info *sbi)
 static inline void f2fs_unlock_all(struct f2fs_sb_info *sbi)
 {
 	up_write(&sbi->cp_rwsem);
+}
+
+static inline void f2fs_nid_write_lock(struct f2fs_sb_info *sbi, nid_t nid)
+{
+	down_write(&sbi->nid_rwlock[nid]);
+}
+
+static inline void f2fs_nid_write_unlock(struct f2fs_sb_info *sbi, nid_t nid)
+{
+	up_write(&sbi->nid_rwlock[nid]);
+}
+
+static inline void f2fs_nid_read_lock(struct f2fs_sb_info *sbi, nid_t nid)
+{
+	down_read(&sbi->nid_rwlock[nid]);
+}
+
+static inline void f2fs_nid_read_unlock(struct f2fs_sb_info *sbi, nid_t nid)
+{
+	up_read(&sbi->nid_rwlock[nid]);
+}
+
+static inline void f2fs_nid_downgrade_write(struct f2fs_sb_info *sbi, nid_t nid)
+{
+	downgrade_write(&sbi->nid_rwlock[nid]);
 }
 
 static inline int __get_cp_reason(struct f2fs_sb_info *sbi)
@@ -2481,6 +2512,7 @@ bool need_inode_block_update(struct f2fs_sb_info *sbi, nid_t ino);
 void get_node_info(struct f2fs_sb_info *sbi, nid_t nid, struct node_info *ni);
 pgoff_t get_next_page_offset(struct dnode_of_data *dn, pgoff_t pgofs);
 int get_dnode_of_data(struct dnode_of_data *dn, pgoff_t index, int mode);
+int get_dnode_of_data_shared(struct dnode_of_data *dn, pgoff_t index, int mode);
 int truncate_inode_blocks(struct inode *inode, pgoff_t from);
 int truncate_xattr_node(struct inode *inode, struct page *page);
 int wait_on_node_pages_writeback(struct f2fs_sb_info *sbi, nid_t ino);
@@ -2489,7 +2521,9 @@ struct page *new_inode_page(struct inode *inode);
 struct page *new_node_page(struct dnode_of_data *dn, unsigned int ofs);
 void ra_node_page(struct f2fs_sb_info *sbi, nid_t nid);
 struct page *get_node_page(struct f2fs_sb_info *sbi, pgoff_t nid);
+struct page *get_node_page_shared(struct f2fs_sb_info *sbi, pgoff_t nid);
 struct page *get_node_page_ra(struct page *parent, int start);
+struct page *get_node_page_ra_shared(struct page *parent, int start);
 void move_node_page(struct page *node_page, int gc_type);
 int fsync_node_pages(struct f2fs_sb_info *sbi, struct inode *inode,
 			struct writeback_control *wbc, bool atomic);

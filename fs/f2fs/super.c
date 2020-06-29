@@ -789,7 +789,7 @@ static void f2fs_put_super(struct super_block *sb)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
 	int i;
-
+        vfree(sbi->nid_rwlock);
 	f2fs_quota_off_umount(sb);
 
 	/* prevent remaining shrinker jobs */
@@ -2343,6 +2343,18 @@ try_onemore:
 	mutex_init(&sbi->cp_mutex);
 	init_rwsem(&sbi->node_write);
 	init_rwsem(&sbi->node_change);
+
+	/* nid rw lock */
+	sbi->nid_rwlock = vmalloc(MAX_NID_RWLOCK * sizeof(struct rw_semaphore));
+	if (sbi->nid_rwlock == NULL) {
+	    printk("fail to allocate nid_rwlock.");
+	    err = -ENOMEM;
+	    goto free_options;
+	} else {
+	    for (i = 0; i < MAX_NID_RWLOCK; i++) {
+		init_rwsem(&sbi->nid_rwlock[i]);
+	    }
+	}
 
 	/* disallow all the data/node/meta page writes */
 	set_sbi_flag(sbi, SBI_POR_DOING);

@@ -928,7 +928,7 @@ next_dnode:
 
 	/* When reading holes, we need its node page */
 	set_new_dnode(&dn, inode, NULL, NULL, 0);
-	err = get_dnode_of_data(&dn, pgofs, mode);
+	err = get_dnode_of_data_shared(&dn, pgofs, mode);
 	if (err) {
 		if (flag == F2FS_GET_BLOCK_BMAP)
 			map->m_pblk = 0;
@@ -955,19 +955,35 @@ next_block:
 				goto sync_out;
 			}
 			if (flag == F2FS_GET_BLOCK_PRE_AIO) {
+                            f2fs_nid_read_unlock(sbi, dn.nid);
+                            f2fs_nid_write_lock(sbi, dn.nid);
+                            lock_page(dn.node_page);
+                            blkaddr = datablock_addr(dn.inode, dn.node_page, dn.ofs_in_node);
 				if (blkaddr == NULL_ADDR) {
 					prealloc++;
 					last_ofs_in_node = dn.ofs_in_node;
 				}
+                            unlock_page(dn.node_page);
+                            f2fs_nid_downgrade_write(sbi, dn.nid);
 			} else {
+                            f2fs_nid_read_unlock(sbi, dn.nid);
+                            f2fs_nid_write_lock(sbi, dn.nid);
+                            lock_page(dn.node_page);
+                            blkaddr = datablock_addr(dn.inode, dn.node_page, dn.ofs_in_node);
+                            if (blkaddr == NEW_ADDR || blkaddr == NULL_ADDR) {
 				err = __allocate_data_block(&dn);
 				if (!err)
 					set_inode_flag(inode, FI_APPEND_WRITE);
+			        if (err)
+				    goto sync_out;
+			        map->m_flags |= F2FS_MAP_NEW;
+			        blkaddr = dn.data_blkaddr;
+                            } else {
+                                dn.data_blkaddr = blkaddr;
+                            }
+                            unlock_page(dn.node_page);
+                            f2fs_nid_downgrade_write(sbi, dn.nid);
 			}
-			if (err)
-				goto sync_out;
-			map->m_flags |= F2FS_MAP_NEW;
-			blkaddr = dn.data_blkaddr;
 		} else {
 			if (flag == F2FS_GET_BLOCK_BMAP) {
 				map->m_pblk = 0;
@@ -1014,7 +1030,12 @@ skip:
 			(pgofs == end || dn.ofs_in_node == end_offset)) {
 
 		dn.ofs_in_node = ofs_in_node;
+                f2fs_nid_read_unlock(sbi, dn.nid);
+                f2fs_nid_write_lock(sbi, dn.nid);
+                lock_page(dn.node_page);
 		err = reserve_new_blocks(&dn, prealloc);
+                unlock_page(dn.node_page);
+                f2fs_nid_downgrade_write(sbi, dn.nid);
 		if (err)
 			goto sync_out;
 
@@ -1031,7 +1052,15 @@ skip:
 	else if (dn.ofs_in_node < end_offset)
 		goto next_block;
 
-	f2fs_put_dnode(&dn);
+	//f2fs_put_dnode(&dn);
+	if (dn.node_page) {
+            f2fs_nid_read_unlock(sbi, dn.nid);
+	    f2fs_put_page(dn.node_page, 0);
+        }
+	if (dn.inode_page && dn.node_page != dn.inode_page)
+		f2fs_put_page(dn.inode_page, 0);
+	dn.node_page = NULL;
+	dn.inode_page = NULL;
 
 	if (create) {
 		__do_map_lock(sbi, flag, false);
@@ -1040,7 +1069,15 @@ skip:
 	goto next_dnode;
 
 sync_out:
-	f2fs_put_dnode(&dn);
+	//f2fs_put_dnode(&dn);
+	if (dn.node_page) {
+            f2fs_nid_read_unlock(sbi, dn.nid);
+	    f2fs_put_page(dn.node_page, 0);
+        }
+	if (dn.inode_page && dn.node_page != dn.inode_page)
+		f2fs_put_page(dn.inode_page, 0);
+	dn.node_page = NULL;
+	dn.inode_page = NULL;
 unlock_out:
 	if (create) {
 		__do_map_lock(sbi, flag, false);
