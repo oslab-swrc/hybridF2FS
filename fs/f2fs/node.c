@@ -3131,10 +3131,8 @@ void atomic_range_read_unlock(struct f2fs_inode_info *fi, unsigned long start, u
 	atomic_t* rlatomic = fi->rlatomic;
 	int i;
 	for (i = start; i <= last; i++) {
-		while(1) {
-			smp_mb__before_atomic();
-			atomic_dec(&rlatomic[i]);
-			smp_mb__after_atomic();
-		}
+		smp_mb__before_atomic();
+		atomic_dec(&rlatomic[i]);
+		smp_mb__after_atomic();
 	}
 }
