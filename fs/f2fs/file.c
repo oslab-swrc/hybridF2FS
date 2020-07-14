@@ -3531,15 +3531,6 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	struct range_lock *range_p;
 	unsigned long range_st, range_ed;
 
-	range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
-	range_st = (unsigned long)(iocb->ki_pos >> 12);
-	range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(from) - 1) >> 12);
-	range_lock_init(range_p, range_st, range_ed);
-
-	// get range lock instead of inode_lock
-	inode_lock_shared(inode);
-	range_write_lock(rltree, range_p);
-
 	if (unlikely(f2fs_cp_error(F2FS_I_SB(inode)))) {
 		ret = -EIO;
 		goto out;
@@ -3560,6 +3551,15 @@ static ssize_t f2fs_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		// inode_lock(inode);
 		inode_lock_shared(inode);
 	}
+
+	range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+	range_st = (unsigned long)(iocb->ki_pos >> 12);
+	range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(from) - 1) >> 12);
+	range_lock_init(range_p, range_st, range_ed);
+
+	// get range lock instead of inode_lock
+	// inode_lock_shared(inode); // covered in if statement above
+	range_write_lock(rltree, range_p);
 
 	ret = generic_write_checks(iocb, from);
 	if (ret > 0) {

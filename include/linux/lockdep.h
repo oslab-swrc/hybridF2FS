@@ -688,7 +688,7 @@ static inline void print_irqtrace_events(struct task_struct *curr)
 #define range_lock_acquire(l, s, t, i)		lock_acquire_exclusive(l, s, t, NULL, i)
 #define range_lock_acquire_nest(l, s, t, n, i)	lock_acquire_exclusive(l, s, t, n, i)
 #define range_lock_acquire_read(l, s, t, i)	lock_acquire_shared(l, s, t, NULL, i)
-#define range_lock_release(l, n, i)		lock_release(l, n, i)
+#define range_lock_release(l, i)		lock_release(l, i)
 
 #define lock_map_acquire(l)			lock_acquire_exclusive(l, 0, 0, NULL, _THIS_IP_)
 #define lock_map_acquire_read(l)		lock_acquire_shared_recursive(l, 0, 0, NULL, _THIS_IP_)

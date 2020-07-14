@@ -364,7 +364,7 @@ int range_read_lock_killable(struct range_lock_tree *tree,
 
 	if (RANGE_LOCK_CONTENDED_RETURN(tree, lock, __range_read_trylock,
 					__range_read_lock_killable)) {
-		range_lock_release(&tree->dep_map, 1, _RET_IP_);
+		range_lock_release(&tree->dep_map, _RET_IP_);
 		return -EINTR;
 	}
 
@@ -392,7 +392,7 @@ void range_read_unlock(struct range_lock_tree *tree, struct range_lock *lock)
 	range_lock_clear_reader(lock);
 	__range_tree_remove(tree, lock);
 
-	range_lock_release(&tree->dep_map, 1, _RET_IP_);
+	range_lock_release(&tree->dep_map, _RET_IP_);
 
 	if (!__range_intersects_intree(tree, lock)) {
 		/* nobody to wakeup, we're done */
@@ -559,7 +559,7 @@ int range_write_lock_killable(struct range_lock_tree *tree,
 
 	if (RANGE_LOCK_CONTENDED_RETURN(tree, lock, __range_write_trylock,
 					__range_write_lock_killable)) {
-		range_lock_release(&tree->dep_map, 1, _RET_IP_);
+		range_lock_release(&tree->dep_map, _RET_IP_);
 		return -EINTR;
 	}
 
@@ -587,7 +587,7 @@ void range_write_unlock(struct range_lock_tree *tree, struct range_lock *lock)
 	range_lock_clear_reader(lock);
 	__range_tree_remove(tree, lock);
         (tree->holds)--; /* REALEASE ! */
-	range_lock_release(&tree->dep_map, 1, _RET_IP_);
+	range_lock_release(&tree->dep_map, _RET_IP_);
 
 	if (!__range_intersects_intree(tree, lock)) {
 		/* nobody to wakeup, we're done */
@@ -692,7 +692,7 @@ int range_write_lock_killable_nested(struct range_lock_tree *tree,
 
 	if (RANGE_LOCK_CONTENDED_RETURN(tree, lock, __range_write_trylock,
 					__range_write_lock_killable)) {
-		range_lock_release(&tree->dep_map, 1, _RET_IP_);
+		range_lock_release(&tree->dep_map, _RET_IP_);
 		return -EINTR;
 	}
 
