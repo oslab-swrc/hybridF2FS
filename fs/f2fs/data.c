@@ -20,6 +20,9 @@
 #include <linux/cleancache.h>
 #include <linux/sched/signal.h>
 
+#include <linux/range_lock.h>
+#include <linux/slab.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -3448,6 +3451,9 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	enum rw_hint hint = iocb->ki_hint;
 	int whint_mode = F2FS_OPTION(sbi).whint_mode;
 	bool do_opu;
+	struct range_lock *range_p;
+	struct range_lock_tree *rltree = fi->rltree;
+	unsigned long range_st, range_ed;
 
 	err = check_direct_IO(inode, iter, offset);
 	if (err)
@@ -3462,6 +3468,16 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 
 	if (rw == WRITE && whint_mode == WHINT_MODE_OFF)
 		iocb->ki_hint = WRITE_LIFE_NOT_SET;
+
+	/* Get range lock for read */
+	if (rw == READ) {
+		inode_lock_shared(inode);
+		range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+		range_st = (unsigned long)(iocb->ki_pos >> 12);
+		range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(iter) - 1) >> 12);
+		range_lock_init(range_p, range_st, range_ed);
+		range_read_lock(rltree, range_p);
+	}
 
 	if (iocb->ki_flags & IOCB_NOWAIT) {
 		if (!down_read_trylock(&fi->i_gc_rwsem[rw])) {
@@ -3481,16 +3497,27 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 			down_read(&fi->i_gc_rwsem[READ]);
 	}
 
+    /* DIO_LOCKING makes do_blockdev_direct_IO to use inode mutex.
+     * Call the function without DIO_LOCKING to handle
+     * direct io read using range lock.
+     */
 	err = __blockdev_direct_IO(iocb, inode, inode->i_sb->s_bdev,
 			iter, rw == WRITE ? get_data_block_dio_write :
 			get_data_block_dio, NULL, f2fs_dio_submit_bio,
-			rw == WRITE ? DIO_LOCKING | DIO_SKIP_HOLES :
+			// rw == WRITE ? DIO_LOCKING | DIO_SKIP_HOLES :
 			DIO_SKIP_HOLES);
 
 	if (do_opu)
 		up_read(&fi->i_gc_rwsem[READ]);
 
 	up_read(&fi->i_gc_rwsem[rw]);
+
+	/* Release range lock for read */
+	if (rw == READ) {
+		range_read_unlock(rltree, range_p);
+		kfree(range_p);
+		inode_unlock_shared(inode);
+	}
 
 	if (rw == WRITE) {
 		if (whint_mode == WHINT_MODE_OFF)

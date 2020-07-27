@@ -26,6 +26,8 @@
 #include <linux/unicode.h>
 #include <linux/part_stat.h>
 
+#include <linux/range_lock.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -976,6 +978,9 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	/* Will be used by directory only */
 	fi->i_dir_level = F2FS_SB(sb)->dir_level;
 
+	/* Initialize Range Lock Tree */
+	fi->rltree = kmalloc(sizeof(struct range_lock_tree), GFP_KERNEL);
+	range_lock_tree_init(fi->rltree);
 	return &fi->vfs_inode;
 }
 
