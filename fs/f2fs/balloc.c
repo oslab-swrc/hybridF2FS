@@ -2,7 +2,7 @@
  * from linux-nova/fs/nova/balloc.c
  *
  */
-
+#include <linux/time.h>
 #include <linux/fs.h>
 #include <linux/f2fs_fs.h>
 #include <linux/bitops.h>
@@ -53,7 +53,7 @@ static void f2fs_init_free_list(struct super_block *sb, struct free_list *free_l
 	free_list->block_start += main_blkaddr; // reserved for metadata
 	sbi->curr_block = main_blkaddr;
 
-	f2fs_msg(sb, KERN_INFO, "f2fs_init_free_list: main_blkaddr = %u", main_blkaddr);
+	f2fs_debug(sbi, KERN_INFO, "f2fs_init_free_list: main_blkaddr = %u", main_blkaddr);
 }
 
 struct f2fs_range_node *f2fs_alloc_blocknode(struct super_block *sb){
@@ -88,7 +88,6 @@ void f2fs_init_blockmap(struct super_block *sb, int recovery){
 		ret = f2fs_insert_blocktree(tree, blknode);
 
 		if(ret){
-//			F2FS_MSG
 			f2fs_free_blocknode(blknode);
 			return;
 		}
@@ -166,7 +165,6 @@ int f2fs_insert_range_node(struct rb_root *tree, struct f2fs_range_node *new_nod
 		} else if(compVal ==1){
 			temp = &((*temp)->rb_right);
 		} else {
-//			f2fs_msg
 			return -EINVAL;
 		}
 	}
@@ -181,7 +179,6 @@ int f2fs_insert_blocktree(struct rb_root *tree, struct f2fs_range_node *new_node
 
 	ret = f2fs_insert_range_node(tree, new_node, NODE_BLOCK);
 	
-//	if(ret) f2fs_msg
 
 	return ret;
 }
@@ -289,7 +286,7 @@ int f2fs_new_blocks(struct super_block *sb, unsigned long *blocknr, unsigned int
 	unsigned long new_blocknr = 0;
 	long ret_blocks = 0;
 	int retried = 0;
-	struct timespec alloc_time;
+	//struct timespec alloc_time;
 
 	num_blocks = 1; //only needs 1 page for node
 
@@ -299,7 +296,6 @@ int f2fs_new_blocks(struct super_block *sb, unsigned long *blocknr, unsigned int
 
 	ret_blocks = f2fs_alloc_blocks_in_free_list(sb, free_list, btype, atype, num_blocks, &new_blocknr, from_tail);
 
-//	f2fs_msg(sb, KERN_INFO, "f2fs_new_block: new_blocknr = %x", new_blocknr);
 
 	if(ret_blocks > 0){
 		free_list->alloc_data_count++;
@@ -319,8 +315,6 @@ int f2fs_new_blocks(struct super_block *sb, unsigned long *blocknr, unsigned int
 
 	*blocknr = new_blocknr;
 
-	//f2fs_msg;
-	//
 	return ret_blocks;
 }
 
@@ -331,7 +325,6 @@ int f2fs_find_free_slot(struct rb_root *tree, unsigned long range_low, unsigned 
 
 	ret = f2fs_find_range_node(tree, range_low, NODE_BLOCK, &ret_node);
 	if(ret){
-		//f2fs_msg
 		return -EINVAL;
 	}
 
@@ -355,7 +348,6 @@ int f2fs_find_free_slot(struct rb_root *tree, unsigned long range_low, unsigned 
 			*prev=NULL;
 	}
 	else{
-		//f2fs_msg
 		return -EINVAL;
 	}
 
@@ -378,7 +370,7 @@ int f2fs_free_blocks(struct super_block *sb, unsigned long blocknr, int num){
 	int ret;
 
 	if(num <= 0){
-			f2fs_msg(sb, KERN_ERR, "%s ERROR: free %d", __func__, num);
+			f2fs_debug(sbi, KERN_ERR, "%s ERROR: free %d", __func__, num);
 			return -EINVAL;
 	}
 
@@ -398,7 +390,7 @@ int f2fs_free_blocks(struct super_block *sb, unsigned long blocknr, int num){
 	block_high = blocknr + num_blocks - 1;
 
 	if(blocknr < free_list->block_start || blocknr+num > free_list->block_end +1){
-		f2fs_msg(sb, KERN_ERR, "free lbocks %lu to %lu, free list %d, start %lu, end %lu",
+		f2fs_debug(sbi, KERN_ERR, "free lbocks %lu to %lu, free list %d, start %lu, end %lu",
 				blocknr, blocknr + num -1,
 				0, free_list->block_start, free_list->block_end);
 		ret = -EIO;
@@ -408,7 +400,7 @@ int f2fs_free_blocks(struct super_block *sb, unsigned long blocknr, int num){
 	ret = f2fs_find_free_slot(tree, block_low, block_high, &prev, &next);
 
 	if(ret){
-		f2fs_msg(sb, KERN_ERR, "%s: find free slot fail: %d", __func__, ret);
+		f2fs_debug(sbi, KERN_ERR, "%s: find free slot fail: %d", __func__, ret);
 		goto out;
 	}
 

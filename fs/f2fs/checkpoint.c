@@ -1582,8 +1582,8 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		ckpt_ver = cur_cp_version(ckpt);
 		ckpt->checkpoint_ver = cpu_to_le64(++ckpt_ver);
 
-		flush_nat_entries(sbi, cpc);
-		flush_sit_entries(sbi, cpc);
+		f2fs_flush_nat_entries(sbi, cpc);
+		f2fs_flush_sit_entries(sbi, cpc);
 
 //		err = do_checkpoint(sbi, cpc);
 //		if (err)
@@ -1607,7 +1607,7 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		clear_sbi_flag(sbi, SBI_IS_DIRTY);
 		clear_sbi_flag(sbi, SBI_NEED_CP);
 
-		clear_prefree_segments(sbi, cpc);
+		f2fs_clear_prefree_segments(sbi, cpc);
 	
 //		unblock_operations(sbi);
 

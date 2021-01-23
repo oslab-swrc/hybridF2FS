@@ -1399,7 +1399,7 @@ static int read_node_page(struct page *page, int op_flags)
 		ret = __copy_to_user_inatomic(page, vaddr, PAGE_SIZE);	
 
 		if( ret < 0)
-			f2fs_msg(sbi->sb, KERN_ERR, " __copy_to_user: return : %d", ret);
+			f2fs_debug(sbi, KERN_ERR, " __copy_to_user: return : %d", ret);
 		
 		return 0;
 	}
@@ -1652,7 +1652,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 
 	/* This page is already truncated */
 	if (unlikely(ni.blk_addr == NULL_ADDR)) {
-		f2fs_msg(sbi->sb, KERN_INFO, "This node page is already truncated");
+		f2fs_debug(sbi, KERN_INFO, "This node page is already truncated");
 		ClearPageUptodate(page);
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
 		up_read(&sbi->node_write);
@@ -1705,7 +1705,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		else
 			size = PAGE_SIZE;
 
-		f2fs_msg(sbi->sb, KERN_INFO, "write_node_page: size to memcopy = %lu", size);
+		f2fs_debug(sbi, KERN_INFO, "write_node_page: size to memcopy = %lu", size);
 
 		ret = __copy_from_user_inatomic_nocache((void*)vaddr, page, size); //copy only small bytes
 
