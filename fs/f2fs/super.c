@@ -888,7 +888,7 @@ while ((p = strsep(&options, ",")) != NULL) {
 		case Opt_pmem:
 			name=match_strdup(&args[0]);
 			if(strlen(name)!=0){
-				f2fs_msg(sb, KERN_INFO, "|pmem = %s|%lu", name, strlen(name));
+				f2fs_debug(sbi, KERN_INFO, "|pmem = %s|%lu", name, strlen(name));
 				strcpy(sbi->pmem_dev, name);
 //				f2fs_msg(sb, KERN_INFO, "|copied  = %s|%d", sbi->pmem_dev, strlen(sbi->pmem_dev));
             set_opt(sbi, PMEM);
@@ -3324,23 +3324,23 @@ int ret;
 <<<<<<< HEAD
 bdev = blkdev_get_by_path(sbi->pmem_dev, sbi->sb->s_mode, sbi->sb->s_type);
 if(!bdev)
-    f2fs_msg(sbi->sb, KERN_ERR, "Couldn't get blkdev by path");
+    f2fs_debug(sbi, KERN_ERR, "Couldn't get blkdev by path");
 dax_dev=fs_dax_get_by_bdev(bdev);
-f2fs_msg(sbi->sb, KERN_INFO, "sbi->pmem_dev : %s", sbi->pmem_dev);
+f2fs_debug(sbi, KERN_INFO, "sbi->pmem_dev : %s", sbi->pmem_dev);
 if(!dax_dev){
-    f2fs_msg(sbi->sb, KERN_ERR, "Couldn't retrieve DAX device");
+    f2fs_debug(sbi, KERN_ERR, "Couldn't retrieve DAX device");
     return -EINVAL;
 }
 sbi->s_dax_dev=dax_dev;
 size = dax_direct_access(sbi->s_dax_dev, 0, LONG_MAX/PAGE_SIZE, &virt_addr, &__pfn_t)*PAGE_SIZE;
 if(size <= 0){
-    f2fs_msg(sbi->sb, KERN_ERR, "direct_access failed");
+    f2fs_debug(sbi, KERN_ERR, "direct_access failed");
     return -EINVAL;
 }
 sbi->virt_addr=virt_addr;
-f2fs_msg(sbi->sb, KERN_INFO, "virt_addr = %p", virt_addr);
+f2fs_debug(sbi, KERN_INFO, "virt_addr = %p", virt_addr);
 if(!sbi->virt_addr){
-    f2fs_msg(sbi->sb, KERN_ERR, "ioremap of the f2fs image failed(1)");
+    f2fs_debug(sbi, KERN_ERR, "ioremap of the f2fs image failed(1)");
     return -EINVAL;
 }
 	
@@ -3450,12 +3450,12 @@ if (err)
 if( test_opt(sbi, PMEM) ){
     retval=f2fs_get_nvmm_info(sbi);
     if(retval){
-        f2fs_msg(sb, KERN_ERR, "get nvmm info failed");
+        f2fs_debug(sbi, KERN_ERR, "get nvmm info failed");
 //		goto free_options;
     }
     if(f2fs_alloc_block_free_lists(sb)){
         retval = -ENOMEM;
-        f2fs_msg(sb, KERN_ERR, "Failed to allocate block free lists");
+        f2fs_debug(sbi, KERN_ERR, "Failed to allocate block free lists");
     }
 }
 
