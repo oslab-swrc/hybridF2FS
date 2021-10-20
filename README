@@ -16,3 +16,29 @@ several of them using the Restructured Text markup notation.
 Please read the Documentation/process/changes.rst file, as it contains the
 requirements for building and running the kernel, and information about
 the problems which may result by upgrading your kernel.
+
+What is hybridF2FS?
+==================
+
+Linux file systems serialize threads when writing shared files. hybridF2FS adopt range locks on shared files to solve this serialization problem, allowing file I/O to be executed concurrently. However, we have found that even with a range lock, I/O throughput no longer increases after a certain number of cores and decreases rapidly on a manycore server.
+ Through extensive performance profiling, we found the cascading tree lock problem that serializes concurrent accesses to the file metadata structure. A mutex lock-based locking mechanism for each file metadata structure serializes I/O requests in modern Linux file systems such as F2FS.
+
+So we developed nCache into hybridF2FS, a novel file metadata cache framework using readers-writer lock that allows concurrent I/O operations for the shared file. hybridF2FS solves the I/O scalability problem in the manycore server while ensuring consistent updates
+
+hybridF2FS adopt NVM+DRAM hybrid structure to use NVM as metadata storage. This enables to move NAT and node logs into NVM space, which leads to reduce overhead of checkpoint.
+
+HOW TO USE hybridF2FS?
+=====================
+
+sudo mkfs.f2fs -f device
+sudo mount -t f2fs device mount_path
+
+Developer Guide
+===============
+
+Our implementation is about F2FS. If you want to check or modify our code, check c files in fs/f2fs/. You may need NVM or enough DRAM to emulate as NVM to use our NVM node logging version. If you have questions, feel free to contact us.
+
+Papers about hybridF2FS
+=======================
+1. Chang-Gyu Lee, Hyunki Byun, Sunghyun Noh, Hyeongu Kang, and Youngjae Kim. 2019. Write optimization of log-structured flash file system for parallel I/O on manycore servers. In Proceedings of the 12th ACM International Conference on Systems and Storage> (SYSTOR '19). Association for Computing Machinery, New York, NY, USA, 21–32. DOI:https://doi.org/10.1145/3319647.3325828
+2.Chang-Gyu Lee, Sunghyun Noh, Hyeongu Kang, Soon Hwang, and Youngjae Kim. 2021. Concurrent file metadata structure using readers-writer lock. In Proceedings of the 36th Annual ACM Symposium on Applied Computing (SAC '21). Association for Computing Machinery, New York, NY, USA, 1172–1181. DOI:https://doi.org/10.1145/3412841.3441992
