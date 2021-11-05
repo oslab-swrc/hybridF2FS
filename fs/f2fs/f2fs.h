@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
+// Header of hybridF2FS by Hyun-Ki Byun
+// To publish hybridF2FS, updated by Soon Hwang
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
 /*
  * fs/f2fs/f2fs.h
  *

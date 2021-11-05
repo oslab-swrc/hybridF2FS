@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
+// Add Attribute of hybridF2FS to in-memory data structures by Hyun-Ki Byun
+// To publish hybridF2FS, updated by Soon Hwang
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
 /*
  * fs/f2fs/super.c
  *
