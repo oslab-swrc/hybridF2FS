@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-// Node Allocation to NVM of hybridF2FS by Hyun-Ki Byun
+// Node Allocation to NVM of hybridF2FS by HyunKi Byun
 // To publish hybridF2FS, updated by Soon Hwang 
 // SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
 /*
