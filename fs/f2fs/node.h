@@ -35,12 +35,6 @@
 /* return value for read_node_page */
 #define LOCKED_PAGE	1
 
-/* atomic operation based range lock */
-void atomic_range_write_lock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last);
-void atomic_range_write_unlock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last);
-void atomic_range_read_lock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last);
-void atomic_range_read_unlock(struct f2fs_inode_info *fi, unsigned long start, unsigned long last);
-
 /* For flag in struct node_info */
 enum {
 	IS_CHECKPOINTED,	/* is it checkpointed before? */
