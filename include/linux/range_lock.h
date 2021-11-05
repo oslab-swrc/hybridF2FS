@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
+// Interval Tree based Range Lock by Jan Kara, Davidlohr Bueso.
+// To publish hybridF2FS, updated by Soon Hwang
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
+/*
+ * Copyright (C) 2017 Jan Kara, Davidlohr Bueso.
+ */
 /*
  * Range/interval rw-locking
  * -------------------------

@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
+// Replace Interval Tree based Range Lock to Atomic operation based Range Lock and add nCache of hybridF2FS by Chang-Gyu Lee
+// To publish hybridF2FS, updated by Soon Hwang 
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
 /*
  * fs/f2fs/node.c
  *

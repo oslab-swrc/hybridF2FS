@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+// Add Range Lock developed by Jan Kara and Davidlohr Bueso.
+// To publish hybridF2FS, updated by Soon Hwang 
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
 /*
  * Runtime locking correctness validator
  *

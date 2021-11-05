@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
+// Replace Per-File Mutex to Atomic Range lock during Direct IO by Chang-Gyu Lee
+// To publish hybridF2FS, updated by Soon Hwang 
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
 /*
  * fs/f2fs/data.c
  *

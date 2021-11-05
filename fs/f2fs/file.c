@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
+// Replace Per-File Mutex to Atomic Range Lock in Read and Write by Chang-Gyu Lee
+// To publish hybridF2FS, updated by Soon Hwang 
+// SPDX-FileCopyrightText: Copyright (c) 2021 Sogang University
 /*
  * fs/f2fs/file.c
  *
