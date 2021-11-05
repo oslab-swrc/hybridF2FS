@@ -78,12 +78,3 @@ Link : https://dl.acm.org/doi/10.1145/3319647.3325828
 2. Chang-Gyu Lee, Sunghyun Noh, Hyeongu Kang, Soon Hwang, and Youngjae Kim. 2021. Concurrent file metadata structure using readers-writer lock. In Proceedings of the 36th Annual ACM Symposium on Applied Computing (SAC '21). Association for Computing Machinery, New York, NY, USA, 1172–1181. DOI:https://doi.org/10.1145/3412841.3441992 
 Link : https://dl.acm.org/doi/10.1145/3412841.3441992
 
-Developer Guide
-===============
-
-Our implementation is about F2FS. If you want to check or modify our code, check c files in fs/f2fs/. You may need NVM or enough DRAM to emulate as NVM to use our NVM node logging version. If you have questions, feel free to contact us.
-
-Papers about hybridF2FS
-=======================
-1. Chang-Gyu Lee, Hyunki Byun, Sunghyun Noh, Hyeongu Kang, and Youngjae Kim. 2019. Write optimization of log-structured flash file system for parallel I/O on manycore servers. In Proceedings of the 12th ACM International Conference on Systems and Storage> (SYSTOR '19). Association for Computing Machinery, New York, NY, USA, 21–32. DOI:https://doi.org/10.1145/3319647.3325828
-2. Chang-Gyu Lee, Sunghyun Noh, Hyeongu Kang, Soon Hwang, and Youngjae Kim. 2021. Concurrent file metadata structure using readers-writer lock. In Proceedings of the 36th Annual ACM Symposium on Applied Computing (SAC '21). Association for Computing Machinery, New York, NY, USA, 1172–1181. DOI:https://doi.org/10.1145/3412841.3441992
