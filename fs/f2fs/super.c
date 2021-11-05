@@ -26,6 +26,8 @@
 #include <linux/unicode.h>
 #include <linux/part_stat.h>
 
+#include <linux/range_lock.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -952,6 +954,7 @@ static int parse_options(struct super_block *sb, char *options)
 static struct inode *f2fs_alloc_inode(struct super_block *sb)
 {
 	struct f2fs_inode_info *fi;
+	int i;
 
 	fi = kmem_cache_alloc(f2fs_inode_cachep, GFP_F2FS_ZERO);
 	if (!fi)
@@ -975,6 +978,16 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 
 	/* Will be used by directory only */
 	fi->i_dir_level = F2FS_SB(sb)->dir_level;
+
+	/* Initialize Range Lock Tree */
+	// fi->rltree = kmalloc(sizeof(struct range_lock_tree), GFP_KERNEL);
+	// range_lock_tree_init(fi->rltree);
+
+	/* Initialize atomic operation-based range lock */
+	fi->rlatomic = vmalloc(sizeof(atomic_t) * 50000000);
+	for (i = 0; i < 50000000; i++) {
+		atomic_set(&fi->rlatomic[i], 0);
+	}
 
 	return &fi->vfs_inode;
 }
@@ -1105,10 +1118,12 @@ static void f2fs_dirty_inode(struct inode *inode, int flags)
 
 static void f2fs_free_inode(struct inode *inode)
 {
+    struct f2fs_inode_info *fi = F2FS_I(inode);
+//    kfree(fi->rltree);
+    vfree(fi->rlatomic);
 	fscrypt_free_inode(inode);
 	kmem_cache_free(f2fs_inode_cachep, F2FS_I(inode));
 }
-
 static void destroy_percpu_info(struct f2fs_sb_info *sbi)
 {
 	percpu_counter_destroy(&sbi->alloc_valid_block_count);
@@ -1134,6 +1149,7 @@ static void f2fs_put_super(struct super_block *sb)
 	int i;
 	bool dropped;
 
+    vfree(sbi->nid_rwlock);
 	f2fs_quota_off_umount(sb);
 
 	/* prevent remaining shrinker jobs */
@@ -3416,6 +3432,18 @@ try_onemore:
 	mutex_init(&sbi->resize_mutex);
 	init_rwsem(&sbi->node_write);
 	init_rwsem(&sbi->node_change);
+
+	/* nid rw lock */
+	sbi->nid_rwlock = vmalloc(MAX_NID_RWLOCK * sizeof(struct rw_semaphore));
+	if (sbi->nid_rwlock == NULL) {
+	    printk("fail to allocate nid_rwlock.");
+	    err = -ENOMEM;
+	    goto free_options;
+	} else {
+	    for (i = 0; i < MAX_NID_RWLOCK; i++) {
+		init_rwsem(&sbi->nid_rwlock[i]);
+	    }
+	}
 
 	/* disallow all the data/node/meta page writes */
 	set_sbi_flag(sbi, SBI_POR_DOING);

@@ -20,6 +20,9 @@
 #include <linux/cleancache.h>
 #include <linux/sched/signal.h>
 
+#include <linux/range_lock.h>
+#include <linux/slab.h>
+
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -1461,7 +1464,7 @@ next_dnode:
 
 	/* When reading holes, we need its node page */
 	set_new_dnode(&dn, inode, NULL, NULL, 0);
-	err = f2fs_get_dnode_of_data(&dn, pgofs, mode);
+	err = f2fs_get_dnode_of_data_shared(&dn, pgofs, mode);
 	if (err) {
 		if (flag == F2FS_GET_BLOCK_BMAP)
 			map->m_pblk = 0;
@@ -1508,22 +1511,38 @@ next_block:
 				goto sync_out;
 			}
 			if (flag == F2FS_GET_BLOCK_PRE_AIO) {
+                            f2fs_nid_read_unlock(sbi, dn.nid);
+                            f2fs_nid_write_lock(sbi, dn.nid);
+                            lock_page(dn.node_page);
+                            blkaddr = data_blkaddr(dn.inode, dn.node_page, dn.ofs_in_node);
 				if (blkaddr == NULL_ADDR) {
 					prealloc++;
 					last_ofs_in_node = dn.ofs_in_node;
 				}
-			} else {
-				WARN_ON(flag != F2FS_GET_BLOCK_PRE_DIO &&
-					flag != F2FS_GET_BLOCK_DIO);
-				err = __allocate_data_block(&dn,
-							map->m_seg_type);
-				if (!err)
-					set_inode_flag(inode, FI_APPEND_WRITE);
+                            unlock_page(dn.node_page);
+                            f2fs_nid_downgrade_write(sbi, dn.nid);
+            } else {
+                WARN_ON(flag != F2FS_GET_BLOCK_PRE_DIO &&
+                        flag != F2FS_GET_BLOCK_DIO);
+                f2fs_nid_read_unlock(sbi, dn.nid);
+                f2fs_nid_write_lock(sbi, dn.nid);
+                lock_page(dn.node_page);
+                blkaddr = data_blkaddr(dn.inode, dn.node_page, dn.ofs_in_node);
+                if (blkaddr == NEW_ADDR || blkaddr == NULL_ADDR) {
+                    err = __allocate_data_block(&dn,map->m_seg_type);
+
+                    if (!err)
+                        set_inode_flag(inode, FI_APPEND_WRITE);
+			        if (err)
+				    goto sync_out;
+			        map->m_flags |= F2FS_MAP_NEW;
+			        blkaddr = dn.data_blkaddr;
+                            } else {
+                                dn.data_blkaddr = blkaddr;
+                            }
+                            unlock_page(dn.node_page);
+                            f2fs_nid_downgrade_write(sbi, dn.nid);
 			}
-			if (err)
-				goto sync_out;
-			map->m_flags |= F2FS_MAP_NEW;
-			blkaddr = dn.data_blkaddr;
 		} else {
 			if (flag == F2FS_GET_BLOCK_BMAP) {
 				map->m_pblk = 0;
@@ -1576,7 +1595,12 @@ skip:
 			(pgofs == end || dn.ofs_in_node == end_offset)) {
 
 		dn.ofs_in_node = ofs_in_node;
-		err = f2fs_reserve_new_blocks(&dn, prealloc);
+        f2fs_nid_read_unlock(sbi, dn.nid);
+        f2fs_nid_write_lock(sbi, dn.nid);
+        lock_page(dn.node_page);
+        err = f2fs_reserve_new_blocks(&dn, prealloc);
+        unlock_page(dn.node_page);
+        f2fs_nid_downgrade_write(sbi, dn.nid);
 		if (err)
 			goto sync_out;
 
@@ -1601,10 +1625,18 @@ skip:
 				start_pgofs, map->m_pblk + ofs,
 				map->m_len - ofs);
 		}
+        f2fs_put_dnode(&dn);
 	}
-
-	f2fs_put_dnode(&dn);
-
+    else{
+        if (dn.node_page) {
+            f2fs_nid_read_unlock(sbi, dn.nid);
+            f2fs_put_page(dn.node_page, 0);
+        }
+        if (dn.inode_page && dn.node_page != dn.inode_page)
+            f2fs_put_page(dn.inode_page, 0);
+        dn.node_page = NULL;
+        dn.inode_page = NULL;
+    }
 	if (map->m_may_create) {
 		__do_map_lock(sbi, flag, false);
 		f2fs_balance_fs(sbi, dn.node_changed);
@@ -1628,8 +1660,18 @@ sync_out:
 		}
 		if (map->m_next_extent)
 			*map->m_next_extent = pgofs + 1;
+        f2fs_put_dnode(&dn);
 	}
-	f2fs_put_dnode(&dn);
+    else{
+        if (dn.node_page) {
+            f2fs_nid_read_unlock(sbi, dn.nid);
+            f2fs_put_page(dn.node_page, 0);
+        }
+        if (dn.inode_page && dn.node_page != dn.inode_page)
+            f2fs_put_page(dn.inode_page, 0);
+        dn.node_page = NULL;
+        dn.inode_page = NULL;
+    }
 unlock_out:
 	if (map->m_may_create) {
 		__do_map_lock(sbi, flag, false);
@@ -3448,6 +3490,10 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	enum rw_hint hint = iocb->ki_hint;
 	int whint_mode = F2FS_OPTION(sbi).whint_mode;
 	bool do_opu;
+	struct f2fs_inode_info *fi = F2FS_I(inode);
+	// struct range_lock *range_p;
+	// struct range_lock_tree *rltree = fi->rltree;
+	unsigned long range_st, range_ed;
 
 	err = check_direct_IO(inode, iter, offset);
 	if (err)
@@ -3462,6 +3508,17 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 
 	if (rw == WRITE && whint_mode == WHINT_MODE_OFF)
 		iocb->ki_hint = WRITE_LIFE_NOT_SET;
+
+	/* Get range lock for read */
+	if (rw == READ) {
+		inode_lock_shared(inode);
+		// range_p = kmalloc(sizeof(struct range_lock), GFP_KERNEL);
+		range_st = (unsigned long)(iocb->ki_pos >> 12);
+		range_ed = (unsigned long)((iocb->ki_pos + iov_iter_count(iter) - 1) >> 12);
+		// range_lock_init(range_p, range_st, range_ed);
+		// range_read_lock(rltree, range_p);
+		atomic_range_read_lock(fi, range_st, range_ed);
+	}
 
 	if (iocb->ki_flags & IOCB_NOWAIT) {
 		if (!down_read_trylock(&fi->i_gc_rwsem[rw])) {
@@ -3481,16 +3538,28 @@ static ssize_t f2fs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 			down_read(&fi->i_gc_rwsem[READ]);
 	}
 
+    /* DIO_LOCKING makes do_blockdev_direct_IO to use inode mutex.
+     * Call the function without DIO_LOCKING to handle
+     * direct io read using range lock.
+     */
 	err = __blockdev_direct_IO(iocb, inode, inode->i_sb->s_bdev,
 			iter, rw == WRITE ? get_data_block_dio_write :
 			get_data_block_dio, NULL, f2fs_dio_submit_bio,
-			rw == WRITE ? DIO_LOCKING | DIO_SKIP_HOLES :
+			// rw == WRITE ? DIO_LOCKING | DIO_SKIP_HOLES :
 			DIO_SKIP_HOLES);
 
 	if (do_opu)
 		up_read(&fi->i_gc_rwsem[READ]);
 
 	up_read(&fi->i_gc_rwsem[rw]);
+
+	/* Release range lock for read */
+	if (rw == READ) {
+		// range_read_unlock(rltree, range_p);
+		// kfree(range_p);
+		atomic_range_read_unlock(fi, range_st, range_ed);
+		inode_unlock_shared(inode);
+	}
 
 	if (rw == WRITE) {
 		if (whint_mode == WHINT_MODE_OFF)
