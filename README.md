@@ -1,6 +1,6 @@
 # hybridF2FS
 
-##License
+## License
 GNU General Public License version 2 (GPLv2)
 
 ## Linux versions supported
