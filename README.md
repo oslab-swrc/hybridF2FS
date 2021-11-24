@@ -1,5 +1,8 @@
 # hybridF2FS
 
+##License
+GNU General Public License version 2 (GPLv2)
+
 ## Linux versions supported
 Default Branch is 5.7, but Linux Kernel above v3.8 can adopt hybridF2FS by git merge. You can adopt our code to that versions by fixing little conflict.
 
