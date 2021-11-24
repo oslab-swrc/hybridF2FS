@@ -57,6 +57,7 @@ For NVM node logging, we adopted balloc.c and balloc.h from NOVA File System. an
 |  <center></center> |  <center>Specification</center> |  
 |:--------:|:--------:|
 | <center>Processor</center> | <center>Intel Xeon E7-8870 v2</center> |
+| <center>Number of Cores</center> | <center>120</center> |
 | <center>Memory</center>  | <center>740GB</center> |
 | <center>Storage</center>  | <center>Samsung EVO 970 250GB</center> |
 | <center>Kernel Version</center>  | <center>Linux 5.7</center> |
